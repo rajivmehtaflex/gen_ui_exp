@@ -1,5 +1,15 @@
 # Stage 2 — Interactive Diagram Artifacts Implementation Plan
 
+> **⏸ PAUSED 2026-10-11 — machine teardown; this folder lives on a persistent volume. RESUME HERE.**
+>
+> **Read first:** the execution ledger at `.superpowers/sdd/2026-10-11-stage2-diagram-artifacts/progress.md` (last entry = exact resume state). Do not trust session memory; trust this file, the ledger, and `git log`.
+>
+> **Status:** Tasks 1 ✅ complete (commits `77f3c7d`, reviewed/approved). Task 2 ~95% — core committed (`d534480`), self-review WIP committed (`ddbab7c`: fs-error hardening + null-args case, **not yet test-verified**). Tasks 3–8 not started.
+>
+> **Resume recipe:** (1) `npm run check:diagram` must be 7/7; (2) `node scripts/test-diagram-tool.mjs` — make it pass against the `ddbab7c` WIP (watch RED first if it passes immediately, verify why); (3) finish Task 2's remaining self-review items from `.superpowers/sdd/2026-10-11-stage2-diagram-artifacts/task-2-report.md`; (4) review Task 2, then continue Tasks 3–8 normally. The subagent that ran Tasks 1–2 is gone — dispatch fresh implementers.
+>
+> **Environment notes for the new machine:** the old one is destroyed — the public trycloudflare URL and the :8787 server are gone (restart: `npm run dev` or `node --env-file=.env server/chat.mjs`; new tunnel = `cloudflared tunnel --url http://localhost:8787`). The user's OpenRouter key is still in `.env`. Uncommitted user edits to `AGENTS.md` and `gen_UI.pdf` sit in the working tree — leave them alone.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** When a user asks for an interactive diagram, the chat model authors a diagramify JSON spec inside a `create_diagram` tool call; the server validates + delivers it through the vendored diagramify CLI and serves the interactive HTML to a sandboxed iframe in AgentInterface's artifact workspace.
