@@ -5,6 +5,7 @@ import { defineComponent } from "@openuidev/react-lang";
 import { z } from "zod/v4";
 import { FlowEdgeSchema, FlowNodeSchema, type FlowEdgeData, type FlowNodeData } from "./schemas";
 import { layoutFlow, pointsToPath, wrapLabel } from "./flow-layout";
+import { dedupeById } from "./dedupe";
 
 export const FlowNode = defineComponent({
   name: "FlowNode",
@@ -46,7 +47,8 @@ function FlowDiagramView({
   direction?: "TB" | "LR";
 }) {
   const key = JSON.stringify([nodes, edges, direction]);
-  const laid = useMemo(() => layoutFlow(nodes, edges, direction ?? "TB"), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { kept: uniqueNodes, duplicates } = useMemo(() => dedupeById(nodes), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const laid = useMemo(() => layoutFlow(uniqueNodes, edges, direction ?? "TB"), [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const markerId = `fd-arrow-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
   return (
@@ -127,7 +129,7 @@ function FlowDiagramView({
           );
         })}
       </svg>
-      {laid.dropped.length > 0 ? (
+      {laid.dropped.length > 0 || duplicates > 0 ? (
         <div
           style={{
             fontSize: 12,
@@ -135,8 +137,16 @@ function FlowDiagramView({
             padding: "4px 2px 0",
           }}
         >
-          {laid.dropped.length} connection{laid.dropped.length > 1 ? "s" : ""} skipped (unknown node
-          {" "}{laid.dropped.map((d) => `"${d.from}"→"${d.to}"`).join(", ")})
+          {[
+            duplicates > 0
+              ? `${duplicates} duplicate node id${duplicates > 1 ? "s" : ""} skipped`
+              : null,
+            laid.dropped.length > 0
+              ? `${laid.dropped.length} connection${laid.dropped.length > 1 ? "s" : ""} skipped (unknown node ${laid.dropped.map((d) => `"${d.from}"→"${d.to}"`).join(", ")})`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </div>
       ) : null}
     </div>

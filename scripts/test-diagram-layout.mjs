@@ -2,6 +2,21 @@
 import assert from "node:assert/strict";
 import { layoutFlow, wrapLabel, pointsToPath } from "../src/library/diagrams/flow-layout";
 import { layoutSequence } from "../src/library/diagrams/sequence-layout";
+import { dedupeById } from "../src/library/diagrams/dedupe";
+
+// Duplicate ids (a model hallucination the parser cannot see) must be de-duped
+// BEFORE layout — keeping the first occurrence and reporting the count — so the
+// view can show a note instead of the layout throwing into a silent error
+// boundary (review finding I2).
+{
+  const { kept, duplicates } = dedupeById([{ id: "a" }, { id: "b" }, { id: "a" }, { id: "a" }]);
+  assert.deepEqual(kept.map((n) => n.id), ["a", "b"], "first occurrence wins, order preserved");
+  assert.equal(duplicates, 2, "duplicate count reported");
+}
+assert.deepEqual(dedupeById([]), { kept: [], duplicates: 0 });
+const single = dedupeById([{ id: "x", label: "X" }]);
+assert.equal(single.kept.length, 1);
+assert.equal(single.duplicates, 0);
 
 // ---------- Flow ----------
 const nodes = [

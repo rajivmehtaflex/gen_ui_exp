@@ -5,6 +5,7 @@ import { defineComponent } from "@openuidev/react-lang";
 import { z } from "zod/v4";
 import { MessageSchema, ParticipantSchema, type MessageData, type ParticipantData } from "./schemas";
 import { layoutSequence } from "./sequence-layout";
+import { dedupeById } from "./dedupe";
 
 export const Participant = defineComponent({
   name: "Participant",
@@ -37,7 +38,8 @@ function SequenceDiagramView({
   messages: MessageData[];
 }) {
   const key = JSON.stringify([participants, messages]);
-  const laid = useMemo(() => layoutSequence(participants, messages), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { kept: uniqueParticipants, duplicates } = useMemo(() => dedupeById(participants), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const laid = useMemo(() => layoutSequence(uniqueParticipants, messages), [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const mFilled = `sq-filled-${uid}`;
   const mOpen = `sq-open-${uid}`;
@@ -148,10 +150,18 @@ function SequenceDiagramView({
           );
         })}
       </svg>
-      {laid.dropped.length > 0 ? (
+      {laid.dropped.length > 0 || duplicates > 0 ? (
         <div style={{ fontSize: 12, color: TEXT2, padding: "4px 2px 0" }}>
-          {laid.dropped.length} message{laid.dropped.length > 1 ? "s" : ""} skipped (unknown
-          participant)
+          {[
+            duplicates > 0
+              ? `${duplicates} duplicate participant id${duplicates > 1 ? "s" : ""} skipped`
+              : null,
+            laid.dropped.length > 0
+              ? `${laid.dropped.length} message${laid.dropped.length > 1 ? "s" : ""} skipped (unknown participant)`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </div>
       ) : null}
     </div>

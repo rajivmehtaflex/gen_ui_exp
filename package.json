@@ -13,6 +13,7 @@
     "gen:spec": "tsx scripts/gen-spec.ts",
     "check:spec": "tsx scripts/gen-spec.ts --check",
     "check:recipe": "node scripts/validate-recipe.mjs",
+    "check:examples": "node scripts/validate-examples.mjs",
     "test:library": "tsx scripts/test-library.mjs",
     "test:layout": "tsx scripts/test-diagram-layout.mjs"
   },
