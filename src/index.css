@@ -1,0 +1,10 @@
+/* OpenUI's stylesheet — imported exactly once, at the root.
+   Every generated component reads its look from these design tokens. */
+@import "@openuidev/react-ui/styles/index.css";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}

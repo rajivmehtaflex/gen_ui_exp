@@ -1,0 +1,35 @@
+{
+  "name": "gen_ui_exp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Phase #1 hello-world self-hosted Generative UI app: AgentInterface + openuiChatLibrary + OpenRouter",
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm run dev:server\" \"npm run dev:web\"",
+    "dev:server": "node --env-file=.env --watch server/chat.mjs",
+    "dev:web": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "gen:spec": "node scripts/gen-spec.mjs",
+    "check:recipe": "node scripts/validate-recipe.mjs"
+  },
+  "dependencies": {
+    "@openuidev/lang-core": "^0.3.0",
+    "@openuidev/react-lang": "^0.3.0",
+    "@openuidev/react-ui": "^0.16.3",
+    "express": "^4.21.2",
+    "openai": "^4.85.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.25.0",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11"
+  }
+}
