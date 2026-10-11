@@ -8,7 +8,7 @@
 // bytes the browser actually receives — never what the server calls upstream.
 //
 // Run with: node --env-file=.env server/chat.mjs
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import express from "express";
 import OpenAI from "openai";
 import { generateSystemPrompt } from "@openuidev/lang-core";
@@ -131,6 +131,21 @@ app.post("/api/chat", async (req, res) => {
     return res.end();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Optional production serving: after `npm run build`, this one port serves the
+// whole app (UI + API, same origin — no proxy needed). Dev via Vite ignores it.
+// ---------------------------------------------------------------------------
+const distDir = new URL("../dist", import.meta.url).pathname;
+if (existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.use((req, res) => {
+    if (req.method === "GET" && !req.path.startsWith("/api")) {
+      return res.sendFile(new URL("../dist/index.html", import.meta.url).pathname);
+    }
+    return res.status(404).json({ error: "not found" });
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`gen_ui_exp server on http://localhost:${PORT}  (mode: ${liveMode ? "live" : "canned"}, model: ${MODEL})`);
