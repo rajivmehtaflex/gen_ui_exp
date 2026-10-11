@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "diagram_type": "explainer-steps",
+  "meta": {
+    "title": "The KV Cache",
+    "subtitle": "Why a language model doesn't re-read everything it has already said — press play and watch the cost difference build, token by token.",
+    "topic_tags": [
+      "LLM INFERENCE",
+      "MEMORY",
+      "INTERACTIVE"
+    ],
+    "visual_preset": "editorial"
+  },
+  "sections": [
+    {
+      "kind": "tldr",
+      "title": "TL;DR",
+      "content": "Generating text one token at a time means attention would normally recompute the same Keys and Values for every prior token, over and over. The KV cache stores them the first time and reuses them, turning each new step from \"attend to everything again\" into \"attend to everything already stored, plus one new token.\" It trades recomputation for memory — and at long contexts or large batches, that memory becomes the bottleneck."
+    },
+    {
+      "kind": "narrative",
+      "number": "01",
+      "title": "The problem it solves",
+      "paragraphs": [
+        "Self-attention turns every token into three vectors: a Query (what am I looking for), a Key (what do I contain, for others to find), and a Value (what do I actually pass along). A token attends to another by matching its Query against that token's Key, then mixing in its Value.",
+        "A token's Key and Value never change once computed — they don't depend on what comes after it. So the fix is obvious once stated: compute them once, keep them, reuse them. Below is what happens if you don't."
+      ]
+    },
+    {
+      "kind": "simulator",
+      "number": "02",
+      "title": "Step through it yourself",
+      "description": "Each press of Step generates one more token. Watch what has to be (re)computed on each side.",
+      "prompt_tokens": [
+        "Explain",
+        "the",
+        "KV",
+        "cache",
+        "to",
+        "a",
+        "reader"
+      ],
+      "generated_tokens": [
+        ":",
+        "each",
+        "new",
+        "token",
+        "reuses",
+        "every",
+        "key",
+        "and",
+        "value",
+        "computed",
+        "before",
+        "it",
+        ",",
+        "instead",
+        "of",
+        "recomputing",
+        "everything",
+        "."
+      ],
+      "total_steps": 18
+    },
+    {
+      "kind": "chart",
+      "x_label": "decode step →",
+      "y_label": "cumulative K,V ops →",
+      "max_x": 20,
+      "curves": [
+        {
+          "label": "with cache — linear",
+          "type": "linear",
+          "color": "#22d3ee"
+        },
+        {
+          "label": "without cache — quadratic",
+          "type": "quadratic",
+          "color": "#f97316"
+        }
+      ],
+      "footer_note": "Both lines start together at the prompt's prefill cost. The cached line adds one token's worth of work per step; the uncached line redoes the entire sequence every step, so the gap compounds fast."
+    },
+    {
+      "kind": "calculator",
+      "number": "03",
+      "title": "What's actually sitting in memory",
+      "description": "The cache isn't one tensor — it's one Key tensor and one Value tensor per attention layer, each shaped:\nTotal memory stacks that over every layer, doubled for Key and Value. Click the values to toggle context length, batch size, or KV heads.",
+      "formula": "[ batch_size × num_kv_heads × sequence_length × head_dim ]",
+      "model_options": [
+        {
+          "name": "7B — 32 layers, 32 heads",
+          "layers": 32,
+          "heads": 32,
+          "head_dim": 128,
+          "weights_gb": 13
+        }
+      ],
+      "context_max": 32768,
+      "context_default": 4096,
+      "batch_max": 16,
+      "batch_default": 1,
+      "heads_default": 32
+    },
+    {
+      "kind": "narrative",
+      "number": "04",
+      "title": "The tradeoff, stated plainly",
+      "paragraphs": [
+        "Model weights are fixed — the same size no matter how long the conversation runs. The KV cache is the opposite: it starts at zero and grows with every token, multiplied by however many sequences are being served at once. That's why it's worth understanding rather than treating as a black box: it's the resource that decides how many users a GPU can serve concurrently, and how long a context it can hold before running out of room."
+      ]
+    },
+    {
+      "kind": "grid_cards",
+      "number": "05",
+      "title": "How systems push back",
+      "description": "None of these remove the cache — they shrink it, share it, or manage it more honestly.",
+      "columns": 3,
+      "cards": [
+        {
+          "eyebrow": "FEWER HEADS TO CACHE",
+          "title": "Multi-Query & Grouped-Query",
+          "description": "Query heads share one (MQA) or a small group (GQA) of Key/Value heads instead of each having their own."
+        },
+        {
+          "eyebrow": "STOP WASTING MEMORY",
+          "title": "PagedAttention",
+          "description": "Used by vLLM: allocates the cache in fixed-size blocks like OS virtual memory, avoiding fragmentation."
+        },
+        {
+          "eyebrow": "FEWER BITS PER NUMBER",
+          "title": "KV Cache Quantization",
+          "description": "Storing cached Keys and Values in int8 or lower instead of fp16 roughly halves memory cost."
+        }
+      ]
+    }
+  ]
+}

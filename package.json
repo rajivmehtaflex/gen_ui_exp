@@ -13,6 +13,7 @@
     "gen:spec": "tsx scripts/gen-spec.ts",
     "check:spec": "tsx scripts/gen-spec.ts --check",
     "check:recipe": "node scripts/validate-recipe.mjs",
+    "check:diagram": "node scripts/check-diagram.mjs",
     "check:examples": "node scripts/validate-examples.mjs",
     "test:library": "tsx scripts/test-library.mjs",
     "test:layout": "tsx scripts/test-diagram-layout.mjs"
@@ -22,6 +23,7 @@
     "@openuidev/lang-core": "^0.3.0",
     "@openuidev/react-lang": "^0.3.0",
     "@openuidev/react-ui": "^0.16.3",
+    "ajv": "^8.17.1",
     "express": "^4.21.2",
     "openai": "^4.85.0",
     "react": "^18.3.1",

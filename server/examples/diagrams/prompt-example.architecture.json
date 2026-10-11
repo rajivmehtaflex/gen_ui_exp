@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Diagram Artifact Pipeline",
+    "subtitle": "How a chat turn becomes a validated diagram artifact",
+    "output": "prompt-example.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "browser", "type": "external", "label": "Browser", "sublabel": "Viewer", "pos": [40, 200], "size": [120, 60] },
+    { "id": "client", "type": "frontend", "label": "React Client", "sublabel": "Vite :5173", "pos": [250, 200], "size": [130, 60] },
+    { "id": "api", "type": "backend", "label": "Express Server", "sublabel": "Node :8787", "pos": [460, 200], "size": [130, 60] },
+    { "id": "diagramify", "type": "backend", "label": "Diagramify CLI", "sublabel": "subprocess", "pos": [670, 200], "size": [130, 60] },
+    { "id": "artifacts", "type": "database", "label": "Artifact Files", "sublabel": "generated/diagrams", "pos": [460, 400], "size": [130, 60] }
+  ],
+  "connections": [
+    { "id": "browser-to-client", "from": "browser", "to": "client", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "client-to-api", "from": "client", "to": "api", "label": "POST /api/chat" },
+    { "id": "api-to-diagramify", "from": "api", "to": "diagramify", "label": "spawn deliver", "variant": "dashed", "fromSide": "right", "toSide": "left" },
+    { "id": "diagramify-to-artifacts", "from": "diagramify", "to": "artifacts", "label": "write html", "fromSide": "bottom", "toSide": "right", "labelDy": 24 },
+    { "id": "artifacts-to-client", "from": "artifacts", "to": "client", "label": "serve artifact", "variant": "dashed", "fromSide": "top", "toSide": "bottom", "labelDy": -24 }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Happy path", "items": ["Chat turn asks for a diagram", "Server spawns the vendored diagramify CLI", "Validated HTML artifact streams back to the client"] },
+    { "dot": "rose", "title": "Gate", "items": ["Artifacts are only served after showcase validation passes"] }
+  ]
+}

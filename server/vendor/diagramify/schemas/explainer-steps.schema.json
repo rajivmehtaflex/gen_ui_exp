@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rajivmehtaflex/diagramify/schemas/explainer-steps.schema.json",
+  "title": "Diagramify Explainer Steps Diagram",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "diagram_type", "meta"],
+  "anyOf": [
+    { "required": ["steps"], "properties": { "steps": { "type": "array" } } },
+    { "required": ["sections"], "properties": { "sections": { "type": "array" } } }
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "diagram_type": { "const": "explainer-steps" },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "subtitle": { "type": "string" },
+        "topic_tags": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 32 }
+        },
+        "output": { "type": "string" },
+        "locale": { "$ref": "common.schema.json#/$defs/locale" },
+        "animation": { "enum": ["trace", "none"] },
+        "visual_preset": { "enum": ["classic", "signal-flow", "blueprint", "editorial"] },
+        "quality_profile": { "enum": ["standard", "showcase"] },
+        "views": { "$ref": "common.schema.json#/$defs/guidedViews" },
+        "legend": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "$ref": "common.schema.json#/$defs/legendMode" },
+            "entries": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "start": { "$ref": "common.schema.json#/$defs/legendEntry" },
+                "active": { "$ref": "common.schema.json#/$defs/legendEntry" },
+                "waiting": { "$ref": "common.schema.json#/$defs/legendEntry" },
+                "decision": { "$ref": "common.schema.json#/$defs/legendEntry" },
+                "success": { "$ref": "common.schema.json#/$defs/legendEntry" },
+                "failure": { "$ref": "common.schema.json#/$defs/legendEntry" },
+                "neutral": { "$ref": "common.schema.json#/$defs/legendEntry" },
+                "external": { "$ref": "common.schema.json#/$defs/legendEntry" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/stepItem" }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind"],
+        "properties": {
+          "kind": { "enum": ["tldr", "narrative", "simulator", "chart", "calculator", "grid_cards", "steps"] },
+          "id": { "$ref": "common.schema.json#/$defs/id" },
+          "number": { "type": "string", "maxLength": 8 },
+          "title": { "type": "string", "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 500 },
+          "summary": { "type": "string", "maxLength": 1000 },
+          "content": { "type": "string", "maxLength": 1000 },
+          "takeaways": {
+            "type": "array",
+            "items": { "type": "string", "maxLength": 300 }
+          },
+          "paragraphs": {
+            "type": "array",
+            "items": { "type": "string", "maxLength": 1000 }
+          },
+          "formula": { "type": "string", "maxLength": 300 },
+          "widget_title": { "type": "string", "maxLength": 60 },
+          "widget_type": { "enum": ["decode_kv", "position_signals", "token_stream", "generic_step"] },
+          "status_label": { "type": "string", "maxLength": 60 },
+          "status_value": { "type": "string", "maxLength": 60 },
+          "metrics": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "value"],
+              "properties": {
+                "label": { "type": "string", "maxLength": 60 },
+                "value": { "type": "string", "maxLength": 30 },
+                "sublabel": { "type": "string", "maxLength": 60 },
+                "color": { "type": "string", "maxLength": 20 }
+              }
+            }
+          },
+          "tokens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text"],
+              "properties": {
+                "text": { "type": "string", "maxLength": 40 },
+                "index": { "type": "integer" },
+                "tag": { "type": "string", "maxLength": 30 },
+                "detail": { "type": "string", "maxLength": 40 }
+              }
+            }
+          },
+          "elements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text"],
+              "properties": {
+                "text": { "type": "string", "maxLength": 40 },
+                "tag": { "type": "string", "maxLength": 30 },
+                "detail": { "type": "string", "maxLength": 40 }
+              }
+            }
+          },
+          "prompt_tokens": {
+            "type": "array",
+            "items": { "type": "string", "maxLength": 30 }
+          },
+          "generated_tokens": {
+            "type": "array",
+            "items": { "type": "string", "maxLength": 30 }
+          },
+          "total_steps": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "x_label": { "type": "string", "maxLength": 40 },
+          "y_label": { "type": "string", "maxLength": 40 },
+          "max_x": { "type": "integer", "minimum": 2, "maximum": 100 },
+          "curves": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "type"],
+              "properties": {
+                "label": { "type": "string", "maxLength": 40 },
+                "type": { "enum": ["constant", "logarithmic", "linear", "quadratic", "exponential"] },
+                "color": { "type": "string", "maxLength": 20 },
+                "style": { "enum": ["solid", "dashed"] }
+              }
+            }
+          },
+          "footer_note": { "type": "string", "maxLength": 300 },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "value"],
+              "properties": {
+                "label": { "type": "string", "maxLength": 50 },
+                "value": { "type": "string", "maxLength": 40 },
+                "sublabel": { "type": "string", "maxLength": 50 }
+              }
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "value"],
+              "properties": {
+                "label": { "type": "string", "maxLength": 50 },
+                "value": { "type": "string", "maxLength": 40 },
+                "highlight": { "type": "boolean" },
+                "unit": { "type": "string", "maxLength": 20 }
+              }
+            }
+          },
+          "summary_note": { "type": "string", "maxLength": 300 },
+          "model_options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "layers", "heads", "head_dim", "weights_gb"],
+              "properties": {
+                "name": { "type": "string", "maxLength": 40 },
+                "layers": { "type": "integer", "minimum": 1 },
+                "heads": { "type": "integer", "minimum": 1 },
+                "head_dim": { "type": "integer", "minimum": 1 },
+                "weights_gb": { "type": "number", "minimum": 0 }
+              }
+            }
+          },
+          "context_min": { "type": "integer", "minimum": 1 },
+          "context_max": { "type": "integer", "minimum": 100 },
+          "context_default": { "type": "integer", "minimum": 1 },
+          "batch_max": { "type": "integer", "minimum": 1 },
+          "batch_default": { "type": "integer", "minimum": 1 },
+          "heads_default": { "type": "integer", "minimum": 1 },
+          "note": { "type": "string", "maxLength": 300 },
+          "columns": { "enum": [2, 3] },
+          "cards": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["title", "description"],
+              "properties": {
+                "eyebrow": { "type": "string", "maxLength": 40 },
+                "title": { "type": "string", "maxLength": 80 },
+                "description": { "type": "string", "maxLength": 400 },
+                "tag": { "type": "string", "maxLength": 24 },
+                "highlight": { "type": "boolean" }
+              }
+            }
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/stepItem" }
+          }
+        }
+      }
+    },
+    "cards": { "$ref": "common.schema.json#/$defs/cards" }
+  },
+  "$defs": {
+    "stepItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "label"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "type": { "enum": ["start", "active", "waiting", "decision", "success", "failure", "neutral", "external"] },
+        "label": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "sublabel": { "type": "string", "maxLength": 80 },
+        "tag": { "type": "string", "maxLength": 24 },
+        "description": { "type": "string", "maxLength": 320 },
+        "math": { "type": "string", "maxLength": 200 },
+        "code": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["content"],
+          "properties": {
+            "language": { "type": "string", "maxLength": 24 },
+            "content": { "type": "string", "maxLength": 600 }
+          }
+        }
+      }
+    }
+  }
+}

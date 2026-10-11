@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Analytics Event Pipeline",
+    "subtitle": "Client events to live dashboard",
+    "output": "dataflow.html",
+    "viewBox": [1080, 780],
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase"
+  },
+  "stages": [
+    { "label": "Source" },
+    { "label": "Transform" },
+    { "label": "Store" },
+    { "label": "Serve" }
+  ],
+  "nodes": [
+    { "id": "sdk", "type": "external", "label": "Client SDK", "sublabel": "clickstream", "stage": 0, "row": 1, "tag": "batched" },
+    { "id": "transform", "type": "backend", "label": "Stream Transform", "sublabel": "normalize + enrich", "stage": 1, "row": 1, "tag": "at-least-once" },
+    { "id": "dead-letters", "type": "messagebus", "label": "events.dlq", "sublabel": "malformed batches", "stage": 2, "row": 3, "tag": "7-day retention" },
+    { "id": "warehouse", "type": "database", "label": "Event Warehouse", "sublabel": "materialized facts", "stage": 2, "row": 1, "tag": "idempotent" },
+    { "id": "dashboard", "type": "frontend", "label": "Analytics Dashboard", "sublabel": "live aggregates", "stage": 3, "row": 1, "tag": "read model" }
+  ],
+  "flows": [
+    { "from": "sdk", "to": "transform", "label": "raw events", "classification": "batched 5s", "variant": "emphasis", "route": "straight" },
+    { "from": "transform", "to": "warehouse", "label": "normalized facts", "classification": "idempotent", "variant": "emphasis", "route": "straight" },
+    { "from": "transform", "to": "dead-letters", "label": "malformed batch", "classification": "dead letter", "variant": "security", "route": "bottom-channel", "labelDy": 30 },
+    { "from": "warehouse", "to": "dashboard", "label": "aggregates", "classification": "non-PII", "variant": "default", "route": "straight" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Delivery", "items": ["SDK batches events every 5 seconds", "Transform writes idempotent facts to the warehouse"] },
+    { "dot": "rose", "title": "Failure path", "items": ["Malformed batches land in a retained dead-letter topic", "Dashboard only reads validated aggregates"] }
+  ]
+}

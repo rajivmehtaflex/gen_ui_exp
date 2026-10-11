@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "diagram_type": "explainer-steps",
+  "meta": {
+    "title": "Scaled Dot-Product Attention",
+    "subtitle": "How a Transformer computes attention over a sequence, step by step",
+    "output": "examples/explainer-steps-attention-mechanism.html",
+    "views": [
+      { "id": "core-math", "label": "The core computation", "focus": ["project", "score", "softmax"], "note": "The three steps that turn Q/K/V into attention weights." },
+      { "id": "full-pass", "label": "Full forward pass", "focus": ["project", "score", "softmax", "weighted-sum", "output"], "note": "Every step from input projection to final output." }
+    ]
+  },
+  "steps": [
+    { "id": "project", "type": "start", "label": "Project Q, K, V", "sublabel": "linear layers", "description": "The input embeddings are projected into query, key, and value matrices using three learned weight matrices.", "code": { "language": "python", "content": "Q = x @ W_q\nK = x @ W_k\nV = x @ W_v" } },
+    { "id": "score", "type": "active", "label": "Compute attention scores", "sublabel": "scaled dot product", "description": "Each query is compared against every key via dot product, then scaled to keep gradients stable.", "math": "scores = (Q . K^T) / sqrt(d_k)" },
+    { "id": "softmax", "type": "decision", "label": "Softmax normalization", "sublabel": "row-wise", "description": "Scores are normalized into a probability distribution over the sequence, so each query attends to keys in proportion to relevance.", "math": "weights = softmax(scores, axis=-1)" },
+    { "id": "weighted-sum", "type": "active", "label": "Weighted sum of values", "sublabel": "context mixing", "description": "The normalized weights are used to compute a weighted average of the value vectors.", "code": { "language": "python", "content": "context = weights @ V" } },
+    { "id": "output", "type": "success", "label": "Attention output", "sublabel": "per-token context", "tag": "final", "description": "Each position now holds a context vector blending information from every position it attended to, ready for the next layer." }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "What this covers",
+      "items": [
+        "The five steps from raw embeddings to attention output",
+        "Where scaling and normalization happen and why",
+        "The exact matrix operations at each step"
+      ]
+    }
+  ]
+}
