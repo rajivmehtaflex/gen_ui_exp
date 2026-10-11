@@ -19,6 +19,7 @@ export interface FlowPoint {
 }
 export interface FlowNodeBox {
   id: string;
+  label: string;
   kind?: string;
   x: number; // center
   y: number; // center
@@ -148,7 +149,7 @@ export function layoutFlow(
 
   const outNodes: FlowNodeBox[] = nodes.map((n) => {
     const rec = g.node(n.id);
-    return { id: n.id, kind: n.kind, x: rec.x, y: rec.y, width: rec.width, height: rec.height };
+    return { id: n.id, label: n.label, kind: n.kind, x: rec.x, y: rec.y, width: rec.width, height: rec.height };
   });
   const outEdges: FlowEdgeRoute[] = valid.map((e, i) => {
     const rec = g.edge(e.from, e.to, String(i));

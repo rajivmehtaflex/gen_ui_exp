@@ -6,13 +6,14 @@
 // Pipe 2 (storage) is deliberately omitted — threads live in memory, which is
 // fine for hello-world. Swap in restStorage()/useOpenuiCloudStorage() later
 // without touching anything else.
-import { AgentInterface, openuiChatLibrary } from "@openuidev/react-ui";
+import { AgentInterface } from "@openuidev/react-ui";
+import { appChatLibrary } from "./library/chat-library";
 import { llm } from "./llm";
 
 export default function App() {
   return (
     <div style={{ height: "100vh" }}>
-      <AgentInterface llm={llm} componentLibrary={openuiChatLibrary} />
+      <AgentInterface llm={llm} componentLibrary={appChatLibrary} />
     </div>
   );
 }

@@ -10,8 +10,11 @@
     "dev:web": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "gen:spec": "node scripts/gen-spec.mjs",
-    "check:recipe": "node scripts/validate-recipe.mjs"
+    "gen:spec": "tsx scripts/gen-spec.ts",
+    "check:spec": "tsx scripts/gen-spec.ts --check",
+    "check:recipe": "node scripts/validate-recipe.mjs",
+    "test:library": "tsx scripts/test-library.mjs",
+    "test:layout": "tsx scripts/test-diagram-layout.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

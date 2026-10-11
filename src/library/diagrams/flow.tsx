@@ -104,7 +104,7 @@ function FlowDiagramView({
 
         {laid.nodes.map((n) => {
           const color = KIND_COLOR[n.kind ?? "process"] ?? KIND_COLOR.process;
-          const lines = wrapLabel(n.label);
+          const lines = wrapLabel(n.label ?? "");
           const startY = n.y - ((lines.length - 1) * 16) / 2 + 4;
           return (
             <g key={n.id} transform={`translate(${n.x - n.width / 2}, ${n.y - n.height / 2})`}>

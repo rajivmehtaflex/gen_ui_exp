@@ -337,6 +337,38 @@
       "VisualCardBlock": {
         "signature": "VisualCardBlock(items: VisualCardItem[], layout?: \"grid\" | \"carousel\", responsive?: boolean, action?: ActionExpression, gap?: number | string)",
         "description": "A grid or carousel of photo-first cards: a full-bleed background image with a tag on top and a bold text panel at the bottom; an optional action makes every card clickable."
+      },
+      "FlowDiagram": {
+        "signature": "FlowDiagram(nodes: FlowNode[], edges: FlowEdge[], direction?: \"TB\" | \"LR\")",
+        "description": "Directed diagram for workflows, architectures, dataflows and lifecycles - laid out automatically as a clean SVG. Use FlowNode references for nodes and FlowEdge references for arrows. direction: \"TB\" (top-to-bottom, default) or \"LR\" (left-to-right pipelines)."
+      },
+      "FlowNode": {
+        "signature": "FlowNode(id: string, label: string, kind?: \"process\" | \"start\" | \"end\" | \"decision\" | \"input\" | \"store\")",
+        "description": "One node in a FlowDiagram. id is a short unique slug that FlowEdge from/to reference; label is 1-3 words; optional kind colors the node: process (default), start, end, decision, input, store."
+      },
+      "FlowEdge": {
+        "signature": "FlowEdge(from: string, to: string, label?: string)",
+        "description": "One directed arrow in a FlowDiagram, from node id to node id. Optional short label on the arrow (e.g. \"yes\", \"OK 200\"). Both endpoints must be ids of FlowNodes in the same FlowDiagram."
+      },
+      "SequenceDiagram": {
+        "signature": "SequenceDiagram(participants: Participant[], messages: Message[])",
+        "description": "Timeline of messages passed between participants over time - lanes left-to-right, messages top-to-bottom. Use Participant references for lanes and Message references for arrows, in chronological order."
+      },
+      "Participant": {
+        "signature": "Participant(id: string, label: string)",
+        "description": "One lane (column) in a SequenceDiagram. id is a short unique slug that Message from/to reference; label names the actor or system (2-3 words)."
+      },
+      "Message": {
+        "signature": "Message(from: string, to: string, label: string, kind?: \"sync\" | \"async\" | \"return\")",
+        "description": "One arrow in a SequenceDiagram from participant id to participant id; define messages in time order. label is what is sent. kind: sync (solid arrow, default), async (open arrow), return (dashed reply)."
+      },
+      "StepExplainer": {
+        "signature": "StepExplainer(steps: ExplainerStep[])",
+        "description": "Ordered concept walkthrough - explains how something works, one ExplainerStep at a time. Use it for \"how does X work\" explanations; use Steps for sequential task/UI instructions instead."
+      },
+      "ExplainerStep": {
+        "signature": "ExplainerStep(title: string, body?: string, code?: string, note?: string)",
+        "description": "One step in a StepExplainer: title, optional body (markdown prose), optional code (plain source rendered as a monospace block), optional note (one-line tip or caveat). All props are plain strings."
       }
     },
     "componentGroups": [
@@ -533,6 +565,25 @@
           "- CompositeCardItem: rich card with header, body array (Text, BoldText, MetricIndicatorInline, IconText, Image, charts, ListBlock, TagBlock, EntityList) and footer (price + Button) — good for products/offers.",
           "- VisualCardItem: image-first card with a BoldText body and optional Tag.",
           "- Text / BoldText / IconText / ImageText / ImageTextLarge / MetricIndicator* are the inline building blocks used INSIDE card items; do not place them directly in the root Card."
+        ]
+      },
+      {
+        "name": "Diagrams",
+        "components": [
+          "FlowDiagram",
+          "FlowNode",
+          "FlowEdge",
+          "SequenceDiagram",
+          "Participant",
+          "Message",
+          "StepExplainer",
+          "ExplainerStep"
+        ],
+        "notes": [
+          "- FlowDiagram: define one FlowNode reference per node; ids are short unique slugs (n1, api); every FlowEdge from/to must match a node id; 12 nodes max.",
+          "- SequenceDiagram: define Participant references first, then Message references in chronological order; from/to must match participant ids; 6 participants / 12 messages max.",
+          "- Use StepExplainer for concept walkthroughs (how X works); use Steps for ordered task instructions.",
+          "- Diagrams render inside the chat card - keep labels short; wide diagrams scroll horizontally."
         ]
       }
     ],
@@ -791,6 +842,30 @@
         },
         "VisualCardBlock": {
           "$ref": "#/$defs/VisualCardBlock"
+        },
+        "FlowDiagram": {
+          "$ref": "#/$defs/FlowDiagram"
+        },
+        "FlowNode": {
+          "$ref": "#/$defs/FlowNode"
+        },
+        "FlowEdge": {
+          "$ref": "#/$defs/FlowEdge"
+        },
+        "SequenceDiagram": {
+          "$ref": "#/$defs/SequenceDiagram"
+        },
+        "Participant": {
+          "$ref": "#/$defs/Participant"
+        },
+        "Message": {
+          "$ref": "#/$defs/Message"
+        },
+        "StepExplainer": {
+          "$ref": "#/$defs/StepExplainer"
+        },
+        "ExplainerStep": {
+          "$ref": "#/$defs/ExplainerStep"
         }
       },
       "required": [
@@ -877,7 +952,15 @@
         "CompositeCardItem",
         "CompositeCardBlock",
         "VisualCardItem",
-        "VisualCardBlock"
+        "VisualCardBlock",
+        "FlowDiagram",
+        "FlowNode",
+        "FlowEdge",
+        "SequenceDiagram",
+        "Participant",
+        "Message",
+        "StepExplainer",
+        "ExplainerStep"
       ],
       "additionalProperties": false,
       "$defs": {
@@ -4837,9 +4920,203 @@
           "additionalProperties": false,
           "id": "SwitchItem",
           "description": "Individual switch toggle"
+        },
+        "FlowDiagram": {
+          "type": "object",
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/FlowNode"
+              }
+            },
+            "edges": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/FlowEdge"
+              }
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "TB",
+                "LR"
+              ]
+            }
+          },
+          "required": [
+            "nodes",
+            "edges"
+          ],
+          "additionalProperties": false,
+          "id": "FlowDiagram",
+          "description": "Directed diagram for workflows, architectures, dataflows and lifecycles - laid out automatically as a clean SVG. Use FlowNode references for nodes and FlowEdge references for arrows. direction: \"TB\" (top-to-bottom, default) or \"LR\" (left-to-right pipelines)."
+        },
+        "FlowNode": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "process",
+                "start",
+                "end",
+                "decision",
+                "input",
+                "store"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "label"
+          ],
+          "additionalProperties": false,
+          "id": "FlowNode",
+          "description": "One node in a FlowDiagram. id is a short unique slug that FlowEdge from/to reference; label is 1-3 words; optional kind colors the node: process (default), start, end, decision, input, store."
+        },
+        "FlowEdge": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false,
+          "id": "FlowEdge",
+          "description": "One directed arrow in a FlowDiagram, from node id to node id. Optional short label on the arrow (e.g. \"yes\", \"OK 200\"). Both endpoints must be ids of FlowNodes in the same FlowDiagram."
+        },
+        "SequenceDiagram": {
+          "type": "object",
+          "properties": {
+            "participants": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Participant"
+              }
+            },
+            "messages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Message"
+              }
+            }
+          },
+          "required": [
+            "participants",
+            "messages"
+          ],
+          "additionalProperties": false,
+          "id": "SequenceDiagram",
+          "description": "Timeline of messages passed between participants over time - lanes left-to-right, messages top-to-bottom. Use Participant references for lanes and Message references for arrows, in chronological order."
+        },
+        "Participant": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label"
+          ],
+          "additionalProperties": false,
+          "id": "Participant",
+          "description": "One lane (column) in a SequenceDiagram. id is a short unique slug that Message from/to reference; label names the actor or system (2-3 words)."
+        },
+        "Message": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "sync",
+                "async",
+                "return"
+              ]
+            }
+          },
+          "required": [
+            "from",
+            "to",
+            "label"
+          ],
+          "additionalProperties": false,
+          "id": "Message",
+          "description": "One arrow in a SequenceDiagram from participant id to participant id; define messages in time order. label is what is sent. kind: sync (solid arrow, default), async (open arrow), return (dashed reply)."
+        },
+        "StepExplainer": {
+          "type": "object",
+          "properties": {
+            "steps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ExplainerStep"
+              }
+            }
+          },
+          "required": [
+            "steps"
+          ],
+          "additionalProperties": false,
+          "id": "StepExplainer",
+          "description": "Ordered concept walkthrough - explains how something works, one ExplainerStep at a time. Use it for \"how does X work\" explanations; use Steps for sequential task/UI instructions instead."
+        },
+        "ExplainerStep": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "additionalProperties": false,
+          "id": "ExplainerStep",
+          "description": "One step in a StepExplainer: title, optional body (markdown prose), optional code (plain source rendered as a monospace block), optional note (one-line tip or caveat). All props are plain strings."
         }
       }
-    }
+    },
+    "id": "gen-ui-exp-chat@1"
   },
   "promptOptions": {
     "examples": [
