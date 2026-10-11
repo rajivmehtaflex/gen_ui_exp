@@ -42,14 +42,42 @@ OpenRouter keys: https://openrouter.ai/keys — server-side only, never bundled.
 id lives in `.env` (`OPENROUTER_MODEL`; default is a free-tier model — any id from
 https://openrouter.ai/models works).
 
+## The diagram vocabulary (Stage 1 custom components)
+
+`src/library/` extends `openuiChatLibrary` with 8 components — the ONE library
+both the briefing pack and the renderer use:
+
+| Family | Signature (positional order) |
+|---|---|
+| `FlowDiagram` | `(nodes: FlowNode[], edges: FlowEdge[], direction?: "TB"\|"LR")` |
+| `FlowNode` | `(id: string, label: string, kind?: "process"\|"start"\|"end"\|"decision"\|"input"\|"store")` |
+| `FlowEdge` | `(from: string, to: string, label?: string)` — ids must match FlowNodes |
+| `SequenceDiagram` | `(participants: Participant[], messages: Message[])` |
+| `Participant` | `(id: string, label: string)` |
+| `Message` | `(from: string, to: string, label: string, kind?: "sync"\|"async"\|"return")` |
+| `StepExplainer` | `(steps: ExplainerStep[])` — concept walkthroughs, not task lists |
+| `ExplainerStep` | `(title: string, body?: string, code?: string, note?: string)` |
+
+Try: *"Show a CI/CD pipeline as a flow diagram"* · *"Diagram the checkout request
+lifecycle as a sequence diagram"* · *"Explain how HTTP caching works step by step"*.
+No key? Canned mode routes diagram-ish prompts to validated showcase recipes.
+
 ## Scripts
 
 | Command | What it does |
 |---|---|
 | `npm run dev` | server (`:8787`) + Vite (`:5173`, proxies `/api`) together |
 | `npm run build` | type-check + production build |
-| `npm run gen:spec` | re-serialize the library → `generated/chat-library.spec.json`. **Run this whenever you touch the library** — prompt and renderer must stay in sync |
-| `npm run check:recipe` | parse the canned recipe against the real schema; must report 0 errors |
+| `npm run gen:spec` | re-serialize the library (via tsx) → `generated/chat-library.spec.json`. **Run this whenever you touch `src/library/`** — prompt and renderer must stay in sync |
+| `npm run check:spec` | exit 1 if the committed spec is stale vs the library (spec-sync gate) |
+| `npm run check:recipe` | parse ALL canned recipes against the real schema; 0 errors required |
+| `npm run check:examples` | parse every prompt example against the real schema; 0 errors required |
+| `npm run test:library` | library contract: 84 built-ins + 8 diagram components, exact signatures, parser gates |
+| `npm run test:layout` | diagram layout math: finite/in-bounds/deterministic, dangling refs dropped |
+
+**The regeneration loop:** edit `src/library/` → `npm run gen:spec` → the dev
+server restarts on the changed spec (`--watch`) → Vite hot-reloads the client.
+
 
 ## How to verify it's working (and stay honest about it)
 
