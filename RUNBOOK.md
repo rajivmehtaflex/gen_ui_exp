@@ -62,6 +62,12 @@ Try: *"Show a CI/CD pipeline as a flow diagram"* · *"Diagram the checkout reque
 lifecycle as a sequence diagram"* · *"Explain how HTTP caching works step by step"*.
 No key? Canned mode routes diagram-ish prompts to validated showcase recipes.
 
+**Live baseline (2026-10-11, `nvidia/nemotron-3-super-120b-a12b:free` via OpenRouter,
+3 prompts × 3 runs, `live-smoke <url> "<prompt>" 3`):** flow **3/3** · sequence **3/3**
+· explainer **3/3** clean parses (0 structural errors). Phase #1's built-in-only
+baseline was 2/3 on one prompt — the canonical examples + rules measurably helped.
+Re-measure after any library/prompt change; never judge from a single run.
+
 ## Scripts
 
 | Command | What it does |
