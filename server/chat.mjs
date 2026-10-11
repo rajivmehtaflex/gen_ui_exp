@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import express from "express";
 import OpenAI from "openai";
 import { generateSystemPrompt } from "@openuidev/lang-core";
-import { cannedRecipe } from "./canned-recipe.mjs";
+import { pickCannedRecipe } from "./canned-recipe.mjs";
 
 // ---------------------------------------------------------------------------
 // The briefing pack — built ONCE at startup. This is the AI's complete job
@@ -86,7 +86,8 @@ app.post("/api/chat", async (req, res) => {
     if (!liveMode) {
       // ---- canned mode: dictate the recipe line by line, like a real stream.
       // root arrives first so the frame renders before its children exist.
-      const lines = cannedRecipe.split("\n");
+      const prompt = String(messages[messages.length - 1]?.content ?? "");
+      const lines = pickCannedRecipe(prompt).split("\n");
       write(chunk(id, { role: "assistant", content: "" }));
       for (const line of lines) {
         if (closed) return res.end();
