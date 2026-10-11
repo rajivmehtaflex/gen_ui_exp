@@ -53,8 +53,9 @@ export async function executeDiagramTool(rawArgs) {
   const shapeError = checkArgsShape(args);
   if (shapeError) return { ok: false, error: shapeError, diagnostics: [] };
 
-  const dir = mkdtempSync(path.join(tmpdir(), "diagram-tool-"));
+  let dir;
   try {
+    dir = mkdtempSync(path.join(tmpdir(), "diagram-tool-"));
     const specPath = path.join(dir, "spec.json");
     const htmlPath = path.join(dir, "artifact.html");
     writeFileSync(specPath, JSON.stringify(args.spec, null, 2));
@@ -75,8 +76,12 @@ export async function executeDiagramTool(rawArgs) {
     const diagramId = randomUUID();
     artifactRegistry.set(diagramId, artifact);
     return { ok: true, diagramId, title: artifact.title, type: artifact.type };
+  } catch (err) {
+    // The contract is "never throws": a filesystem hiccup (temp dir, spec
+    // write, artifact read) is still a failed tool call for the model to retry.
+    return { ok: false, error: `diagram-tool error: ${err.message}`, diagnostics: [] };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    if (dir) rmSync(dir, { recursive: true, force: true });
   }
 }
 

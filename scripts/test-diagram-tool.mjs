@@ -94,6 +94,7 @@ await check("malformed args shapes resolve ok:false", async () => {
     "missing spec": { title: "x", type: "architecture" },
     "spec not an object": { title: "x", type: "architecture", spec: "{}" },
     "args not an object": ["architecture"],
+    "args are null": null,
   })) {
     const result = await executeDiagramTool(JSON.stringify(args));
     assert.equal(result.ok, false, `${label}: expected ok:false, got ${JSON.stringify(result)}`);
