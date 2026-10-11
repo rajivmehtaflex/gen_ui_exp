@@ -58,7 +58,14 @@ function FlowDiagramView({
         aria-label="Flow diagram"
         viewBox={`0 0 ${laid.width} ${laid.height}`}
         width="100%"
-        style={{ minWidth: 520 }}
+        style={{
+          // Cap upscaling: a narrow layout stretched to the card width renders
+          // giant boxes and text. Natural size centered, at most 1.5x.
+          maxWidth: Math.round(laid.width * 1.5),
+          minWidth: laid.width,
+          display: "block",
+          margin: "0 auto",
+        }}
         preserveAspectRatio="xMidYMid meet"
       >
         <defs>
@@ -107,7 +114,10 @@ function FlowDiagramView({
         {laid.nodes.map((n) => {
           const color = KIND_COLOR[n.kind ?? "process"] ?? KIND_COLOR.process;
           const lines = wrapLabel(n.label ?? "");
-          const startY = n.y - ((lines.length - 1) * 16) / 2 + 4;
+          // The group is translated to the box TOP-LEFT: text y is LOCAL —
+          // center the line block within the box height. (Using n.y here — the
+          // global center — displaced labels outside their boxes.)
+          const startY = n.height / 2 - ((lines.length - 1) * 16) / 2 + 4;
           return (
             <g key={n.id} transform={`translate(${n.x - n.width / 2}, ${n.y - n.height / 2})`}>
               <rect width={n.width} height={n.height} rx={10} fill={SURFACE} stroke={color} strokeWidth={1.5} />

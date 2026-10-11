@@ -51,7 +51,12 @@ function SequenceDiagramView({
         aria-label="Sequence diagram"
         viewBox={`0 0 ${laid.width} ${laid.height}`}
         width="100%"
-        style={{ minWidth: 520 }}
+        style={{
+          maxWidth: Math.round(laid.width * 1.5),
+          minWidth: laid.width,
+          display: "block",
+          margin: "0 auto",
+        }}
         preserveAspectRatio="xMidYMid meet"
       >
         <defs>
