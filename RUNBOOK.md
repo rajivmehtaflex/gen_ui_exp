@@ -61,6 +61,10 @@ https://openrouter.ai/models works).
 
 ## Troubleshooting
 
+- **"Upstream error: …" in chat**: the server reached OpenRouter and was refused —
+  check the server console and, in order: your key (typo?), the model id (still
+  available on OpenRouter?), rate limits (`:free` models are throttled). Fix `.env`,
+  restart `npm run dev`.
 - **Blank reply / "Unknown component"**: the #1 GenUI bug — prompt spec and renderer
   library out of sync. Re-run `npm run gen:spec` and restart.
 - **Adapter mismatch symptoms** (garbled or empty assistant messages): the stream adapter

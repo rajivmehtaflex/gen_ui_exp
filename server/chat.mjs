@@ -28,9 +28,18 @@ const systemPrompt = generateSystemPrompt({
 });
 
 const PORT = Number(process.env.PORT ?? 8787);
-const MODEL = process.env.OPENROUTER_MODEL || "unspecified";
+const MODEL = process.env.OPENROUTER_MODEL || "";
 const apiKey = process.env.OPENROUTER_API_KEY?.trim() || "";
 const liveMode = apiKey.length > 0;
+
+// Fail fast on half-configured live mode — a key without a model would 400 on
+// every request and (before the visible-error fix) show users a blank reply.
+if (liveMode && !MODEL) {
+  console.error(
+    "OPENROUTER_API_KEY is set but OPENROUTER_MODEL is empty — set a model id in .env (see .env.example).",
+  );
+  process.exit(1);
+}
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -111,6 +120,12 @@ app.post("/api/chat", async (req, res) => {
   } catch (err) {
     // Mid-stream errors still end with [DONE] so the client adapter closes cleanly.
     console.error("chat error:", err.message);
+    // The adapter silently skips chunks without choices[].delta.content — an
+    // error sent only as {"error":...} would be a BLANK reply in chat. Emit
+    // visible assistant text (unless the client itself hung up).
+    if (!closed && err.name !== "AbortError") {
+      write(chunk(id, { content: `Upstream error: ${err.message}. Check the server console, your key, model id, or rate limits.` }));
+    }
     write(`data: ${JSON.stringify({ error: { message: err.message } })}\n\n`);
     write("data: [DONE]\n\n");
     return res.end();
