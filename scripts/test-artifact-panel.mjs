@@ -27,6 +27,11 @@ async function render(page, props) {
   await page.evaluate((value) => window.setArtifactProps(value), props);
 }
 
+function registerFixture(id, artifact) {
+  const result = artifactRegistry.put(id, artifact);
+  assert.equal(result.ok, true, result.error);
+}
+
 await check("artifact_missing_on_reopen", async (page) => {
   await render(page, { status: "ready", diagramId: "expired-id", title: "Expired", type: "architecture" });
   await page.getByRole("alert").getByText(/no longer available/i).waitFor();
@@ -35,7 +40,7 @@ await check("artifact_missing_on_reopen", async (page) => {
 
 await check("building_to_ready_and_failed", async (page) => {
   const id = "browser-ready";
-  artifactRegistry.set(id, { title: "Ready", type: "architecture", html: "<!doctype html><title>Ready diagram</title>", hash: "test" });
+  registerFixture(id, { title: "Ready", type: "architecture", html: "<!doctype html><title>Ready diagram</title>", hash: "test" });
   try {
     await render(page, { status: "building", title: "Ready" });
     await page.getByRole("status").getByText(/building/i).waitFor();
@@ -52,7 +57,7 @@ await check("building_to_ready_and_failed", async (page) => {
 
 await check("retry_after_fetch_failure", async (page) => {
   const id = "browser-retry";
-  artifactRegistry.set(id, { title: "Retry", type: "architecture", html: "<!doctype html><title>Retry diagram</title>", hash: "test" });
+  registerFixture(id, { title: "Retry", type: "architecture", html: "<!doctype html><title>Retry diagram</title>", hash: "test" });
   let failedOnce = false;
   await page.route(`**/api/artifacts/${id}`, async (route) => {
     if (!failedOnce) { failedOnce = true; await route.abort("failed"); }
@@ -68,8 +73,8 @@ await check("retry_after_fetch_failure", async (page) => {
 await check("encoded_id_and_ready_switch_wait_for_availability", async (page) => {
   const first = "first-ready";
   const second = "encoded ?# ready";
-  artifactRegistry.set(first, { title: "First", type: "architecture", html: "<!doctype html><title>First</title>", hash: "test" });
-  artifactRegistry.set(second, { title: "Second", type: "architecture", html: "<!doctype html><title>Second</title>", hash: "test" });
+  registerFixture(first, { title: "First", type: "architecture", html: "<!doctype html><title>First</title>", hash: "test" });
+  registerFixture(second, { title: "Second", type: "architecture", html: "<!doctype html><title>Second</title>", hash: "test" });
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   let availabilityRequested = false;

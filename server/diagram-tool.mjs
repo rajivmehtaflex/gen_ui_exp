@@ -5,7 +5,7 @@
 //   executeDiagramTool(rawArgs)  validate -> deliver (vendored CLI subprocess)
 //                                -> artifactRegistry under a fresh UUID
 //   registerArtifactRoutes(app)  GET /api/artifacts/:id serves registry HTML
-//   artifactRegistry             in-memory Map<id, {title, type, html, hash}>
+//   artifactRegistry             bounded in-memory artifact store
 //
 // Artifact ids live ONLY in the registry — they never touch the filesystem, so
 // a bad or hostile id is always a plain 404.
@@ -14,6 +14,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createArtifactStore, DEFAULT_ARTIFACT_STORE_OPTIONS } from "./artifact-store.mjs";
 import { DIAGRAM_TYPES } from "./diagram-policy.mjs";
 import { runProcessTree } from "./process-runner.mjs";
 export { DIAGRAM_TYPES } from "./diagram-policy.mjs";
@@ -229,9 +230,7 @@ export function toolResultChunk({ toolCallId, content }, model = "diagram-model"
   })}\n\n`;
 }
 
-// id -> { title, type, html, hash }. Unbounded by design: this is a demo with
-// no persistence, and later tasks decide the eviction story.
-export const artifactRegistry = new Map();
+export const artifactRegistry = createArtifactStore(DEFAULT_ARTIFACT_STORE_OPTIONS);
 
 // Executes one tool call. rawArgs is the JSON string the model produced.
 // Never throws — every failure mode comes back as {ok:false, ...}.
@@ -267,7 +266,8 @@ export async function executeDiagramTool(rawArgs, signal = null, { cleanupTempDi
       hash: delivered.receipt?.artifact?.sha256 || createHash("sha256").update(html).digest("hex"),
     };
     const diagramId = randomUUID();
-    artifactRegistry.set(diagramId, artifact);
+    const stored = artifactRegistry.put(diagramId, artifact);
+    if (!stored.ok) return { ok: false, error: stored.error, diagnostics: [] };
     return { ok: true, diagramId, title: artifact.title, type: artifact.type };
   } catch (err) {
     // The contract is "never throws": a filesystem hiccup (temp dir, spec
@@ -283,7 +283,7 @@ export async function executeDiagramTool(rawArgs, signal = null, { cleanupTempDi
 
 // Registers the artifact routes on an express app. Anything that is not a live
 // registry id — including ids carrying "/", "\" or traversal — is a JSON 404.
-export function registerArtifactRoutes(app) {
+export function registerArtifactRoutes(app, { store = artifactRegistry } = {}) {
   const notFound = (_req, res) => res.status(404).json({ error: "artifact not found" });
 
   app.get("/api/artifacts/:id", (req, res) => {
@@ -291,7 +291,7 @@ export function registerArtifactRoutes(app) {
     if (typeof id !== "string" || id.length === 0 || id.includes("/") || id.includes("\\")) {
       return notFound(req, res);
     }
-    const artifact = artifactRegistry.get(id);
+    const artifact = store.get(id);
     if (!artifact) return notFound(req, res);
     res.set({
       "Content-Type": "text/html; charset=utf-8",

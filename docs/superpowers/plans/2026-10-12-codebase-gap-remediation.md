@@ -141,11 +141,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Produce `createArtifactStore({maxEntries,maxBytes,ttlMs,maxArtifactBytes,now}): ArtifactStore`; methods `put(id, artifact): {ok:boolean,error?:string}`, `get(id): Artifact|undefined`, `delete(id): boolean`, `clear(): void`, `stats(): {entries:number,bytes:number}`. Artifact has `title,type,html,hash,bytes,createdAt`. Consume T7 results; later T11 exposes the digest/bytes in tool responses.
 
-- [ ] Add `entry_byte_ttl_limits` with injected clock and tiny budgets. Assert oldest entries evict deterministically, a single oversize item is rejected before insertion, expiry returns missing, UTF-8 byte counts reflect Unicode rather than JS string length, and replacement/deletion update totals.
-- [ ] Run `node scripts/test-artifact-store.mjs`; confirm the current unbounded Map cannot satisfy the policy.
-- [ ] Implement bounded oldest-first retention using the spec defaults and use it behind registry/routes. Count actual UTF-8 HTML bytes. TTL is creation-time based, and expiry is enforced on lookup and insertion; document that access does not extend retention.
-- [ ] Re-run store and existing artifact route/tool checks; require 404 for expired/evicted ids, successful live entries, unchanged nosniff/no-store plus T5 policy.
-- [ ] Commit with `fix(artifacts): bound retained html by count bytes and age`.
+- [x] Add `entry_byte_ttl_limits` with injected clock and tiny budgets. Assert oldest entries evict deterministically, a single oversize item is rejected before insertion, expiry returns missing, UTF-8 byte counts reflect Unicode rather than JS string length, and replacement/deletion update totals.
+- [x] Run `node scripts/test-artifact-store.mjs`; the baseline unbounded Map had no store API, and the new focused test now passes against the bounded store.
+- [x] Implement bounded oldest-first retention using the spec defaults and use it behind registry/routes. Count actual UTF-8 HTML bytes. TTL is creation-time based, and expiry is enforced on lookup and insertion; document that access does not extend retention.
+- [x] Re-run store and existing artifact route/tool checks; require 404 for expired/evicted ids, successful live entries, unchanged nosniff/no-store plus T5 policy.
+- [x] Commit with `fix(artifacts): bound retained html by count bytes and age`.
 
 ### Task 9: Bound admission and streaming work (remaining G14)
 
