@@ -56,11 +56,12 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Produce `diagramModeForPrompt(prompt: string): "inline" | "interactive" | "auto"`. Explicit inline takes precedence over interactive keywords. Produce shared `DIAGRAM_TYPES`; keep declaration and authoring guidance aligned with vendor schemas. Consume generated library prompt and all six vendor schemas.
 
-- [ ] Add `architecture_guidance_uses_real_placement`: assert no advertised `tier` property; validate one prose-derived architecture with `pos`, and one with `layout.mode="grid"`, `row` and `col`. Add minimal six-type authoring fixtures and assert receipt `ok===true`; include required collection minima and label/code bounds.
-- [ ] Add `routing_preserves_inline`: assert explicit inline architecture/sequence asks return inline, explicit interactive/explorable diagram asks return interactive, ordinary sketches return auto and ordinary non-diagram asks do not force a tool. Cover a prompt that mentions both inline and interactive.
-- [ ] Run `node scripts/test-diagram-policy.mjs` and `node scripts/test-diagram-prompt.mjs`; confirm the current guidance/routing assertions fail.
-- [ ] Replace invalid architecture prose with actual placement guidance and use shared routing in canned/live paths. Keep only one canonical example in the prompt; test fixtures need not all be in the prompt.
-- [ ] Re-run both scripts and `npm run check:diagram`; require all focused assertions and all seven existing showcase fixtures to pass. Commit only this task's files with `fix(prompt): align diagram contracts and hybrid routing`.
+- [x] Add `architecture_guidance_uses_real_placement`: assert no advertised `tier` property; validate one prose-derived architecture with `pos`, and one with `layout.mode="grid"`, `row` and `col`. Add minimal six-type authoring fixtures and assert receipt `ok===true`; include required collection minima and label/code bounds.
+- [x] Add `routing_preserves_inline`: assert explicit inline architecture/sequence asks return inline, explicit interactive/explorable diagram asks return interactive, ordinary sketches return auto and ordinary non-diagram asks do not force a tool. Cover a prompt that mentions both inline and interactive.
+- [x] Run `node scripts/test-diagram-policy.mjs` and `node scripts/test-diagram-prompt.mjs`; confirm the current guidance/routing assertions fail.
+- [x] Replace invalid architecture prose with actual placement guidance and use shared routing in canned/live paths. Keep only one canonical example in the prompt; test fixtures need not all be in the prompt.
+- [x] Re-run both scripts and `npm run check:diagram`; require all focused assertions and all seven existing showcase fixtures to pass. Commit only this task's files with `fix(prompt): align diagram contracts and hybrid routing`.
+- [x] Close audit follow-up: assert workflow/dataflow node minimums fail when underfilled, and route natural `artifact of a <diagram>` wording to interactive while preserving explicit inline priority; rerun T1 gates and review the follow-up diff.
 
 ### Task 2: Make the browser stream lifecycle complete (G04)
 
@@ -68,11 +69,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Preserve `chatAdapter(): StreamProtocolAdapter` and existing event types. Produce exactly-once text and tool termination, frame parsing across arbitrary bytes/CRLF, and deterministic reader cancellation/release. Consume the existing OpenAI-shaped chunks and tool-result extension.
 
-- [ ] Add adapter cases named `two_round_tool_ids_reset`, `tool_then_text_balanced`, `done_without_stop`, `length_and_filter_visible`, `server_error_visible`, `eof_without_done_visible`, `split_utf8_crlf`, and `consumer_break_releases_reader`. Assert starts/ends count match for each id, previous-round ids are never ended twice, terminal data is not followed by content, and errors/truncation are visible. Use a mock ReadableStream to assert cancel/release when iteration stops.
-- [ ] Run `./node_modules/.bin/tsx scripts/test-tool-wire.mjs`; confirm lifecycle assertions fail.
-- [ ] Replace line-only parsing with SSE frame assembly; isolate JSON parsing from event processing failures. Reset tool index state per model round and handle stop/length/filter/DONE/EOF/error explicitly. Close text before changing rounds and create a new text id when the next assistant segment begins; use `try/finally` to release the reader.
-- [ ] Re-run the wire script and `npm run build`; require balanced events and exit 0. Confirm fetchLLM's installed handling of transport failures is compatible and do not double-emit errors it owns.
-- [ ] Commit with `fix(stream): settle assistant and tool events on every exit`.
+- [x] Add adapter cases named `two_round_tool_ids_reset`, `tool_then_text_balanced`, `done_without_stop`, `length_and_filter_visible`, `server_error_visible`, `eof_without_done_visible`, `split_utf8_crlf`, and `consumer_break_releases_reader`. Assert starts/ends count match for each id, previous-round ids are never ended twice, terminal data is not followed by content, and errors/truncation are visible. Use a mock ReadableStream to assert cancel/release when iteration stops.
+- [x] Run `./node_modules/.bin/tsx scripts/test-tool-wire.mjs`; confirm lifecycle assertions fail.
+- [x] Replace line-only parsing with SSE frame assembly; isolate JSON parsing from event processing failures. Reset tool index state per model round and handle stop/length/filter/DONE/EOF/error explicitly. Close text before changing rounds and create a new text id when the next assistant segment begins; use `try/finally` to release the reader.
+- [x] Re-run the wire script and `npm run build`; require balanced events and exit 0. Confirm fetchLLM's installed handling of transport failures is compatible and do not double-emit errors it owns.
+- [x] Commit with `fix(stream): settle assistant and tool events on every exit`.
 
 ### Task 3: Answer tool batches and reserve final response (G02, G03, G05)
 
