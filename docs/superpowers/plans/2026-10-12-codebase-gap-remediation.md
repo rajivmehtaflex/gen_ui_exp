@@ -105,11 +105,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Preserve generated HTML/viewer behavior. Artifact responses add a CSP with `sandbox allow-scripts allow-downloads`; restrict resources to self-contained inline styles/scripts and data/blob images, deny connections/objects/base rewriting/forms, and verify the policy against real exports. No DOM text is inserted through HTML interpolation.
 
-- [ ] Create browser fixture `toc_title_stays_text` using a valid explainer section title containing `<img src=x onerror=...>` and quotes. Assert the title appears literally, no injected img node exists, and no marker handler runs; cover section number too. Add `direct_navigation_has_opaque_origin` and blocked parent access/navigation checks.
-- [ ] Run `node scripts/test-artifact-isolation.mjs` after browser harness setup; confirm the TOC sink/policy assertions fail against current output.
-- [ ] Build anchor/spans using createElement, textContent and safe hash assignment. Add the response policy including a resource directive initially specified as `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-scripts allow-downloads`. Adjust only if a necessary viewer capability is demonstrated by a failing browser check; retain sandbox restrictions.
-- [ ] Require hostile-title, panel export, direct-navigation, pan/zoom, theme, guided story and explainer widget checks to pass. Document precisely the vendor patch and confirm LICENSE remains present. This is an isolated vendor modification; do not broadly reformat the template.
-- [ ] Commit with `fix(artifacts): keep viewer text inert and sandbox direct access`.
+- [x] Create browser fixture `toc_title_stays_text` using a valid explainer section title containing `<img src=x onerror=...>` and quotes. Assert the title appears literally, no injected img node exists, and no marker handler runs; cover section number too. Add `direct_navigation_has_opaque_origin` and blocked parent access/navigation checks.
+- [x] Run `node scripts/test-artifact-isolation.mjs` after browser harness setup; confirm the TOC sink/policy assertions fail against current output.
+- [x] Build anchor/spans using createElement, textContent and safe hash assignment. Add the response policy including a resource directive initially specified as `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-scripts allow-downloads`. Adjust only if a necessary viewer capability is demonstrated by a failing browser check; retain sandbox restrictions.
+- [x] Require hostile-title, panel export, direct-navigation, pan/zoom, theme, guided story and explainer widget checks to pass. Document precisely the vendor patch and confirm LICENSE remains present. This is an isolated vendor modification; do not broadly reformat the template.
+- [x] Commit with `fix(artifacts): keep viewer text inert and sandbox direct access`.
 
 ### Task 6: Validate messages before opening the stream (G10)
 

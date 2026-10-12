@@ -14979,16 +14979,16 @@
       function initExplainerToc() {
         const toc = document.getElementById('explainer-toc');
         if (!toc) return;
-        const svg = document.querySelector('svg[data-diagram-type="explainer-steps"]');
+        const svg = document.querySelector('.diagram-container > svg');
         if (!svg) return;
 
-        const sectionNodes = Array.from(svg.querySelectorAll('g[id^="section-"]'));
+        const sectionNodes = Array.from(svg.querySelectorAll('g[id^="section-"][data-section-kind]'));
         if (!sectionNodes.length) return;
 
         toc.hidden = false;
         const list = document.getElementById('explainer-toc-list');
         if (!list) return;
-        list.innerHTML = '';
+        list.replaceChildren();
 
         const sections = sectionNodes.map((el, index) => {
           const id = el.id;
@@ -15004,17 +15004,24 @@
           li.className = 'explainer-toc-item';
           li.dataset.sectionId = sec.id;
           li.dataset.chapterTag = sec.chapterTag;
-          li.innerHTML = `<a href="#${sec.id}" class="explainer-toc-link">
-            <span class="toc-badge">${sec.number}</span>
-            <span class="toc-title">${sec.title}</span>
-          </a>`;
+          const link = document.createElement('a');
+          link.href = '#' + encodeURIComponent(sec.id);
+          link.className = 'explainer-toc-link';
+          const badge = document.createElement('span');
+          badge.className = 'toc-badge';
+          badge.textContent = sec.number;
+          const title = document.createElement('span');
+          title.className = 'toc-title';
+          title.textContent = sec.title;
+          link.append(badge, title);
+          li.appendChild(link);
 
-          li.querySelector('a').addEventListener('click', (e) => {
+          link.addEventListener('click', (e) => {
             e.preventDefault();
             const targetEl = document.getElementById(sec.id);
             if (targetEl) {
               targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              history.pushState(null, '', '#' + sec.id);
+              history.pushState(null, '', '#' + encodeURIComponent(sec.id));
             }
           });
           list.appendChild(li);

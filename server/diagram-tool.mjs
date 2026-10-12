@@ -297,6 +297,7 @@ export function registerArtifactRoutes(app) {
       "Content-Type": "text/html; charset=utf-8",
       "x-content-type-options": "nosniff",
       "cache-control": "no-store",
+      "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-scripts allow-downloads",
     });
     return res.send(artifact.html);
   });
