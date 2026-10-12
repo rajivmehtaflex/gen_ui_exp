@@ -8,11 +8,13 @@ const harness = await startArtifactBrowserHarness();
 const browser = await chromium.launch({ headless: true });
 let failures = 0;
 
-async function check(name, fn) {
+async function check(name, fn, pathname = "/__artifact_panel") {
   const page = await browser.newPage({ acceptDownloads: true });
   try {
-    await page.goto(`${harness.baseUrl}/__artifact_panel`, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForFunction(() => window.artifactHarnessReady === true);
+    await page.goto(`${harness.baseUrl}${pathname}`, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForFunction((path) => path === "/__artifact_panel"
+      ? window.artifactHarnessReady === true
+      : window.artifactHostReady === true, pathname, { timeout: 5000 });
     await fn(page);
     console.log(`PASS  ${name}`);
   } catch (error) {
@@ -70,15 +72,27 @@ await check("encoded_id_and_ready_switch_wait_for_availability", async (page) =>
   artifactRegistry.set(second, { title: "Second", type: "architecture", html: "<!doctype html><title>Second</title>", hash: "test" });
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
+  let availabilityRequested = false;
+  let earlyIframeRequest = false;
+  const secondUrl = `${harness.baseUrl}/api/artifacts/encoded%20%3F%23%20ready`;
+  page.on("request", (request) => {
+    if (request.url() === secondUrl && request.resourceType() === "document") earlyIframeRequest = true;
+  });
   await page.route("**/api/artifacts/encoded%20%3F%23%20ready", async (route) => {
-    await gate;
+    if (route.request().resourceType() === "fetch") {
+      availabilityRequested = true;
+      await gate;
+    }
     await route.continue();
   });
   try {
     await render(page, { status: "ready", diagramId: first, title: "First", type: "architecture" });
     await page.frameLocator("iframe").locator("title").waitFor({ state: "attached" });
     await render(page, { status: "ready", diagramId: second, title: "Second", type: "architecture" });
-    await page.getByRole("status").getByText(/checking diagram availability/i).waitFor();
+    await page.waitForRequest((request) => request.url() === secondUrl && request.resourceType() === "fetch");
+    await page.waitForTimeout(100);
+    assert.equal(availabilityRequested, true, "second artifact availability request should be held");
+    assert.equal(earlyIframeRequest, false, "second artifact iframe must not be requested before availability succeeds");
     assert.equal(await page.locator("iframe").count(), 0);
     release();
     await page.frameLocator("iframe").locator("title").waitFor({ state: "attached" });
@@ -90,7 +104,7 @@ await check("encoded_id_and_ready_switch_wait_for_availability", async (page) =>
   }
 });
 
-await check("download_from_host_panel", async (page) => {
+await check("generated_artifact_downloads_from_view_level_harness", async (page) => {
   const spec = JSON.parse(readFileSync(new URL("../server/examples/diagrams/prompt-example.architecture.json", import.meta.url), "utf8"));
   const result = await executeDiagramTool(JSON.stringify({ title: "Download diagram", type: "architecture", spec }));
   assert.equal(result.ok, true, JSON.stringify(result));
@@ -117,6 +131,51 @@ await check("download_from_host_panel", async (page) => {
     }
   } finally { artifactRegistry.delete(result.diagramId); }
 });
+
+await check("app_tool_result_open_and_reopen_lifecycle", async (page) => {
+  const args = {
+    title: "Host lifecycle diagram",
+    type: "architecture",
+    spec: JSON.parse(readFileSync(new URL("../server/examples/diagrams/prompt-example.architecture.json", import.meta.url), "utf8")),
+  };
+  const result = await executeDiagramTool(JSON.stringify(args));
+  assert.equal(result.ok, true, JSON.stringify(result));
+  const id = result.diagramId;
+  harness.setHostChatFixture({ args: JSON.stringify(args), result });
+  try {
+    const input = page.locator("textarea").first();
+    await input.waitFor({ state: "visible" });
+    await input.fill("Create an interactive architecture diagram");
+    await page.getByRole("button", { name: /^(Send|Send message)$/ }).first().click();
+
+    const preview = page.getByRole("button", { name: /Host lifecycle diagram.*Open/ });
+    await preview.waitFor({ state: "visible" });
+    await preview.click();
+    await page.getByRole("region", { name: "Host lifecycle diagram" }).waitFor({ state: "visible" });
+    const frame = page.frameLocator("iframe");
+    await frame.locator("head > title").waitFor({ state: "attached" });
+    for (const format of ["SVG", "PNG"]) {
+      await frame.getByRole("button", { name: "Export diagram" }).click({ timeout: 3000 });
+      await frame.locator("#export-menu.open").waitFor();
+      const [download] = await Promise.all([
+        page.waitForEvent("download", { timeout: 15000 }),
+        frame.locator(`button[data-format="${format.toLowerCase()}"]`).click(),
+      ]);
+      assert.match(download.suggestedFilename(), new RegExp(`\\.${format.toLowerCase()}$`, "i"));
+    }
+
+    await page.getByRole("button", { name: "Close detailed-view panel" }).click();
+    await page.locator("iframe").waitFor({ state: "detached" });
+    artifactRegistry.delete(id);
+
+    await preview.click();
+    await page.getByRole("alert").getByText(/no longer available/i).waitFor({ state: "visible" });
+    assert.equal(await page.locator("iframe").count(), 0);
+  } finally {
+    artifactRegistry.delete(id);
+    harness.setHostChatFixture(null);
+  }
+}, "/__artifact_host");
 
 await browser.close();
 await harness.close();

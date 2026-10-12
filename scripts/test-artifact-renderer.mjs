@@ -64,6 +64,33 @@ await check("parser handles partial streaming arguments", () => {
   ), null);
 });
 
+await check("parser treats a completed null tool result as failure", () => {
+  const args = JSON.stringify({ title: "Deploy", type: "architecture", spec: {} });
+  const streaming = diagramArtifactRenderer.parser(
+    { args, response: null },
+    { isStreaming: true, isActive: false, open: () => {}, close: () => {} },
+  );
+  assert.equal(streaming?.props.status, "building", "null remains in progress while the host reports streaming");
+
+  const completed = diagramArtifactRenderer.parser(
+    { args, response: null },
+    { isStreaming: false, isActive: false, open: () => {}, close: () => {} },
+  );
+  assert.equal(completed?.props.status, "failed");
+  assert.match(completed.props.error, /completed without a result/i);
+  assert.equal(completed.meta, null);
+  const preview = renderToString(diagramArtifactRenderer.preview(completed.props, {
+    isStreaming: false, isActive: false, open: () => {}, close: () => {},
+  }));
+  assert.match(preview, /completed without a result/i);
+  assert.doesNotMatch(preview, /Open|building/i);
+  const panel = renderToString(diagramArtifactRenderer.actual(completed.props, {
+    isStreaming: false, isActive: true, open: () => {}, close: () => {},
+  }));
+  assert.match(panel, /completed without a result/i);
+  assert.doesNotMatch(panel, /<iframe/);
+});
+
 await check("parser handles stored reopen without args", () => {
   const stored = diagramArtifactRenderer.parser(
     { args: undefined, response: { ok: true, diagramId: "d1", title: "Deploy", type: "architecture" } },

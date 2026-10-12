@@ -81,11 +81,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Produce `runToolLoop({ messages, createCompletion, executeTool, emit, signal, model, initialMode }): Promise<void>`. `createCompletion(request, {signal})` returns an async iterable of OpenAI chunks; `executeTool(rawArgs, signal)` returns the existing diagram result union; `emit(sse: string)` may return a promise. Maintain all state per request; injected functions permit an offline provider stub. Consume T1 routing and existing chunk helpers.
 
-- [ ] Add `batch_results_match_all_ids`, `unknown_function_not_executed`, `third_attempt_success_gets_final_text`, `three_failures_stop`, `canned_failure_is_honest`, and `truncated_tool_arguments_not_executed`. Assert every assistant call has one result, unknown function never reaches diagram execution, exactly three failed attempts maximum, and a successful third attempt gets one final completion with `tool_choice="none"`.
-- [ ] Run `node scripts/test-chat-loop.mjs`; confirm the current selection/budget/canned assertions fail.
-- [ ] Extract orchestration, dispatch every call sequentially, validate ids/names before execution, return errors for unsupported calls, and append all results before calling the provider again. Set `parallel_tool_calls:false` where accepted but still handle returned batches. Share a three-execution budget across the request; return a budget error for every excess call without executing it. Separate diagram attempts from the final response budget and provide a deterministic visible fallback if the final provider response fails. Canned path branches on `result.ok`.
-- [ ] Re-run loop and wire checks; require all cases to pass with no network requests. Include abort between result and final response, malformed/empty tool_calls, and mixed-success batches. The final response must settle through T2.
-- [ ] Commit with `fix(chat): complete tool batches and bounded diagram retries`.
+- [x] Add `batch_results_match_all_ids`, `unknown_function_not_executed`, `third_attempt_success_gets_final_text`, `three_failures_stop`, `canned_failure_is_honest`, and `truncated_tool_arguments_not_executed`. Assert every assistant call has one result, unknown function never reaches diagram execution, exactly three failed attempts maximum, and a successful third attempt gets one final completion with `tool_choice="none"`.
+- [x] Run `node scripts/test-chat-loop.mjs`; confirm the current selection/budget/canned assertions fail.
+- [x] Extract orchestration, dispatch every call sequentially, validate ids/names before execution, return errors for unsupported calls, and append all results before calling the provider again. Set `parallel_tool_calls:false` where accepted but still handle returned batches. Share a three-execution budget across the request; return a budget error for every excess call without executing it. Separate diagram attempts from the final response budget and provide a deterministic visible fallback if the final provider response fails. Canned path branches on `result.ok`.
+- [x] Re-run loop and wire checks; require all cases to pass with no network requests. Include abort between result and final response, malformed/empty tool_calls, and mixed-success batches. The final response must settle through T2.
+- [x] Commit with `fix(chat): complete tool batches and bounded diagram retries`.
 
 ### Task 4: Represent artifact outcome and availability (G06, G07)
 
@@ -93,11 +93,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Expand `DiagramArtifactProps` to a discriminated building/ready/failed union; ready includes `diagramId`, `title`, `type`, and later optional receipt fields. Produce `DiagramArtifactView(props: DiagramArtifactProps)` with cancellable availability fetch before mounting the iframe; a 404 becomes missing and a transport error has a retry action. Preserve stable artifact meta only for typed ready results.
 
-- [ ] Add parser assertions for `ok:false` with complete args, string `ok`, object diagramId/title, unknown type and malformed partial args. Require failed results to render failure text and no Open chip/Building state. Assert the sandbox contains scripts/downloads and excludes same-origin/top-navigation.
-- [ ] Run `./node_modules/.bin/tsx scripts/test-artifact-renderer.mjs`; confirm failures are caught.
-- [ ] Implement guarded parser and explicit UI states; encode artifact ids in URLs. Keep partial building previews, show failure details, and distinguish expired/missing artifacts after availability checks. Sandbox becomes `allow-scripts allow-downloads`.
-- [ ] Re-run renderer checks and build. In the browser panel check named `artifact_missing_on_reopen`, return a JSON 404 and require a readable missing state; check `download_from_host_panel` with an actual generated artifact and observe SVG/PNG downloads. Verify building→ready, building→failed and retry after fetch failure. Use the local Playwright browser harness introduced by this task; T12 later integrates it into CI.
-- [ ] Commit with `fix(artifacts): surface failures expiry and supported exports`.
+- [x] Add parser assertions for `ok:false` with complete args, string `ok`, object diagramId/title, unknown type and malformed partial args. Require failed results to render failure text and no Open chip/Building state. Assert the sandbox contains scripts/downloads and excludes same-origin/top-navigation.
+- [x] Run `./node_modules/.bin/tsx scripts/test-artifact-renderer.mjs`; confirm failures are caught.
+- [x] Implement guarded parser and explicit UI states; encode artifact ids in URLs. Keep partial building previews, show failure details, and distinguish expired/missing artifacts after availability checks. Sandbox becomes `allow-scripts allow-downloads`.
+- [x] Re-run renderer checks and build. In the browser panel check named `artifact_missing_on_reopen`, return a JSON 404 and require a readable missing state; check `download_from_host_panel` with an actual generated artifact and observe SVG/PNG downloads. Verify building→ready, building→failed and retry after fetch failure. Use the local Playwright browser harness introduced by this task; T12 later integrates it into CI.
+- [x] Commit with `fix(artifacts): surface failures expiry and supported exports`.
 
 ### Task 5: Fix the vendor TOC sink and direct-navigation isolation (G08, G09)
 

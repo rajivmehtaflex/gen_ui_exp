@@ -32,7 +32,7 @@ function previewTitle(args: unknown): string {
 export const diagramArtifactRenderer = defineArtifactRenderer<DiagramArtifactProps>({
   type: "diagram-html",
   toolName: "create_diagram",
-  parser: ({ args, response }) => {
+  parser: ({ args, response }, { isStreaming }) => {
     if (response !== null && response !== undefined) {
       const result = parseJsonSafe(response);
       const title = previewTitle(args);
@@ -46,6 +46,16 @@ export const diagramArtifactRenderer = defineArtifactRenderer<DiagramArtifactPro
       const error = isRecord(result) && result.ok === false && validText(result.error)
         ? result.error : "Diagram creation returned an invalid result.";
       return { props: { status: "failed", title, error, diagnostics: isRecord(result) ? result.diagnostics : undefined }, meta: null };
+    }
+    if (response === null && !isStreaming) {
+      return {
+        props: {
+          status: "failed",
+          title: previewTitle(args),
+          error: "Diagram creation completed without a result.",
+        },
+        meta: null,
+      };
     }
     if (typeof args === "string" && args.trim().length > 0) {
       try {

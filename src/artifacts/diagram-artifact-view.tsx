@@ -36,5 +36,5 @@ export function DiagramArtifactView(props: DiagramArtifactProps) {
       : [];
     return <div role="alert" style={messageStyle}>Diagram creation failed: {props.error}{details.length > 0 && <ul>{details.map((item, index) => <li key={index}>{item.message}</li>)}</ul>}</div>;
   }
-  return <ReadyDiagram {...props} />;
+  return <ReadyDiagram key={props.diagramId} {...props} />;
 }
