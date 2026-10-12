@@ -23,6 +23,7 @@ check("architecture_guidance_uses_real_placement", () => {
 });
 check("hybrid_prompt_preserves_inline", () => {
   assert.match(diagramPromptBlock, /inline.*precedence/i);
+  assert.match(diagramPromptBlock, /inline labels.*inline code examples.*interactive/i);
   assert.doesNotMatch(diagramPromptBlock, /or asks for an architecture/);
 });
 check("generated_library_and_canonical_example", () => {

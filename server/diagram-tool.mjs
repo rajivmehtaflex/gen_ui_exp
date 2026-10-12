@@ -54,7 +54,7 @@ export const diagramPromptBlock = `
 ## Interactive Diagram Tool (create_diagram)
 
 ### Hybrid routing
-An explicit inline diagram request takes precedence over interactive wording. Render it with the browser library's FlowDiagram, SequenceDiagram, or StepExplainer components as appropriate. For an explicit interactive, explorable, artifact, or diagramify diagram request, invoke \`create_diagram\`; the host displays the resulting artifact. For an ordinary sketch or diagram request, choose the representation that best serves the user. Ordinary non-diagram chat needs no diagram tool.
+An explicit inline diagram request takes precedence over interactive wording. Inline labels and inline code examples are content details; they do not change an explicitly interactive diagram request. Render inline diagrams with the browser library's FlowDiagram, SequenceDiagram, or StepExplainer components as appropriate. For an explicit interactive, explorable, artifact, or diagramify diagram request, invoke \`create_diagram\`; the host displays the resulting artifact. For an ordinary sketch or diagram request, choose the representation that best serves the user. Ordinary non-diagram chat needs no diagram tool.
 If a tool call fails validation, inspect the diagnostics and retry the corrected spec at most twice.
 
 ### Diagram Types and Schemas
