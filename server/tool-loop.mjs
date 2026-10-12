@@ -8,6 +8,7 @@ import { createStreamBudget, MAX_MODEL_OUTPUT_BYTES } from "./resource-limits.mj
 
 const MAX_DIAGRAM_EXECUTIONS = 3;
 const STALLED_REQUEST_MESSAGE = "I stopped this response before it finished because the request ran out of time or the connection closed. Ask again to continue.";
+const UNDELIVERABLE_FRAME_MESSAGE = "I stopped this response because one piece of it was too large to deliver. Ask again to continue.";
 
 function formatBytes(limitBytes) {
   if (limitBytes >= 1024 * 1024) return `${Math.round(limitBytes / (1024 * 1024))} MiB`;
@@ -75,6 +76,14 @@ async function runToolLoopRounds({ messages, createCompletion, executeTool, emit
   maxModelOutputBytes = MAX_MODEL_OUTPUT_BYTES }) {
   const conversation = [...messages];
   const budget = createStreamBudget(maxModelOutputBytes);
+  // The writer refused a frame, so it was never delivered; continuing would
+  // stream a gap the client reads as normal output. Settle visibly instead —
+  // unless the request is already unwinding, which the abort checks handle.
+  const settleAfterRefusal = async () => {
+    if (signal?.aborted) return false;
+    await visibleStop(emit, model, UNDELIVERABLE_FRAME_MESSAGE);
+    return true;
+  };
   let executions = 0;
   let toolChoice = initialToolChoice(initialMode);
   let finalAfterSuccess = false;
@@ -129,7 +138,7 @@ async function runToolLoopRounds({ messages, createCompletion, executeTool, emit
         if (finalRequest && choice?.finish_reason === "stop") {
           heldFinalStop = frame;
         } else if (!(finalRequest && invalidFinalFinish)) {
-          await emit(frame);
+          if ((await emit(frame)) === false) return await settleAfterRefusal();
         }
       }
     } catch (error) {
@@ -178,7 +187,9 @@ async function runToolLoopRounds({ messages, createCompletion, executeTool, emit
     // malformed call with a stable synthetic id so its error result is visible.
     for (const call of normalized) {
       if (call.missingId) {
-        for (const frame of assistantToolCallChunks(call, model)) await emit(frame);
+        for (const frame of assistantToolCallChunks(call, model)) {
+          if ((await emit(frame)) === false) return await settleAfterRefusal();
+        }
       }
     }
     conversation.push({
@@ -230,7 +241,9 @@ async function runToolLoopRounds({ messages, createCompletion, executeTool, emit
         }
       }
       if (signal?.aborted) return false;
-      await emit(toolResultChunk({ toolCallId: call.id, content: JSON.stringify(result) }, model));
+      if ((await emit(toolResultChunk({ toolCallId: call.id, content: JSON.stringify(result) }, model))) === false) {
+        return await settleAfterRefusal();
+      }
       conversation.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
       if (result.ok) succeeded = true;
       else lastFailure = result;

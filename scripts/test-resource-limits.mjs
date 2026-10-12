@@ -640,9 +640,101 @@ await check("tool_argument_budget", async () => {
   assert.ok(hasVisibleStop(textual.frames));
 });
 
+await check("oversized_frame_never_enters_pending_queue", async () => {
+  const cap = 512;
+  const res = new FakeResponse({ highWaterMark: 4096 });
+  const writer = createSseWriter(res, { maxPendingBytes: cap });
+  assert.equal(await writer.write("x".repeat(cap)), true, "a frame exactly the budget fits an empty queue");
+  assert.equal(res.pendingBytes, cap);
+  res.consume(cap);
+  assert.equal(await writer.write("y".repeat(cap + 1)), false,
+    "a single write larger than the budget must be refused outright");
+  assert.equal(res.pendingBytes, 0, "a refused frame must never be queued");
+  assert.equal(res.delivered, "x".repeat(cap), "only delivered bytes reach the client");
+
+  // Post-abort path: oversized is refused even with room; a terminal frame
+  // that fits is still flushed; one that cannot fit is dropped, not queued.
+  const controller = new AbortController();
+  const abortedRes = new FakeResponse({ highWaterMark: 4096 });
+  const abortedWriter = createSseWriter(abortedRes, { signal: controller.signal, maxPendingBytes: cap });
+  controller.abort();
+  assert.equal(await abortedWriter.write("z".repeat(cap + 1)), false,
+    "an oversized frame must be refused after abort too");
+  assert.equal(abortedRes.pendingBytes, 0);
+  assert.equal(await abortedWriter.write("q".repeat(cap / 2)), true,
+    "a stopped writer still flushes a terminal frame that fits");
+  assert.equal(await abortedWriter.write("r".repeat(cap)), false,
+    "a frame that cannot fit a stopped writer must be dropped");
+  assert.equal(abortedRes.pendingBytes, cap / 2, "dropped frames must not grow the queue");
+  writer.close();
+  abortedWriter.close();
+});
+
+await check("oversized_title_stops_visibly", async () => {
+  const bigTitle = "T".repeat(300_000);
+  const limiter = createDiagramLimiter(2);
+  const result = await executeDiagramTool(
+    JSON.stringify({ title: bigTitle, type: "architecture", spec: { nodes: [] } }),
+    null,
+    { limiter, runner: fakeRunner("ok").run },
+  );
+  assert.equal(result.ok, true, `fixture: the oversized title must still be accepted: ${JSON.stringify(result)}`);
+  const frame = toolResultChunk({ toolCallId: "call_big_title", content: JSON.stringify(result) }, "offline-model");
+  assert.ok(Buffer.byteLength(frame) > limits.DEFAULT_MAX_PENDING_SSE_BYTES,
+    "fixture: the success frame with the model title must exceed the pending budget");
+  const frameRes = new FakeResponse({ highWaterMark: 4096 });
+  const frameWriter = createSseWriter(frameRes, { maxPendingBytes: limits.DEFAULT_MAX_PENDING_SSE_BYTES });
+  assert.equal(await frameWriter.write(frame), false,
+    "the writer must refuse the oversized success frame instead of queueing it");
+  assert.ok(frameRes.pendingBytes <= limits.DEFAULT_MAX_PENDING_SSE_BYTES);
+  frameWriter.close();
+  frameRes.end();
+
+  // Through the loop: the refused result frame ends the request with a visible
+  // diagnostic instead of a gap or a fabricated success.
+  const loopRes = new FakeResponse({ highWaterMark: 1024 * 1024 });
+  const loopWriter = createSseWriter(loopRes, { maxPendingBytes: 64 * 1024 });
+  const controller = new AbortController();
+  const frames = [];
+  const executed = [];
+  const completed = await runToolLoop({
+    messages: [{ role: "user", content: "draw a diagram" }],
+    createCompletion: async () => (async function* emit() {
+      yield chunk({ role: "assistant", tool_calls: [{
+        index: 0, id: "call_big_title", type: "function",
+        function: { name: "create_diagram", arguments: "{}" },
+      }] });
+      yield chunk({}, "tool_calls");
+    })(),
+    executeTool: async () => {
+      executed.push("executed");
+      return { ok: true, diagramId: "diag", title: bigTitle, type: "architecture" };
+    },
+    emit: (sse) => {
+      frames.push(sse);
+      return loopWriter.write(sse);
+    },
+    signal: controller.signal,
+    model: "offline-model",
+    initialMode: "auto",
+  });
+  assert.equal(executed.length, 1, "the diagram still runs; only its delivery is refused");
+  assert.equal(completed?.completed, true, "the request settles with a diagnostic");
+  assert.equal(frameDelta(frames.at(-1)).content ?? "", "", "no frame may follow the settled diagnostic");
+  assert.match(visibleText(frames), /too large|stopped/i,
+    "the refusal must be visible instead of a silently gapped stream");
+  assert.ok(hasVisibleStop(frames), "the diagnostic must settle the stream terminally");
+  assert.ok(loopRes.pendingBytes <= 64 * 1024,
+    `pending stayed at ${loopRes.pendingBytes}, over the budget`);
+  loopWriter.close();
+  loopRes.end();
+});
+
 await check("no_outstanding_handles", () => {
+  // PipeWrap is excluded: it is this script's own stdio whenever output is
+  // piped, and the harness spawns nothing that could own another one.
   const pinning = ["Timeout", "Immediate", "Interval", "TCPSocketWrap", "TCPConnectWrap",
-    "TCPServerWrap", "PipeWrap", "DNSCHANNEL"];
+    "TCPServerWrap", "DNSCHANNEL"];
   const leftover = process.getActiveResourcesInfo().filter((type) => pinning.includes(type));
   assert.deepEqual(leftover, [], `the harness must own no outstanding handles: ${leftover.join(", ")}`);
 });

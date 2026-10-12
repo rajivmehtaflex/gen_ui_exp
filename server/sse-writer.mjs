@@ -1,15 +1,16 @@
-// Bounded, backpressure-aware SSE writer for the chat route. While the client
-// reads slower than the server produces, write() waits for drain instead of
-// growing the queue past maxPendingBytes; a single frame larger than that
-// budget is only ever queued into an empty queue, so pending bytes can exceed
-// the budget by at most that one frame (frame sources are clamped upstream —
-// see runCli in diagram-tool.mjs). Once the signal aborts (deadline or
+// Bounded, backpressure-aware SSE writer for the chat route. At most
+// maxPendingBytes may sit queued, for every caller: a frame larger than the
+// budget is refused outright (write resolves false and nothing is queued), and
+// while the client reads slower than the server produces, write() waits for
+// drain instead of growing the queue. Once the signal aborts (deadline or
 // disconnect) nothing waits again — only frames that already fit are flushed,
-// so terminal diagnostics still reach a reader that keeps up. Every write
-// settles on drain, close, error, or abort; a stalled or gone client can never
-// leave the request handler hanging on an unresolved promise. Pass a signal:
-// the deadline is the only bound on how long a write may wait for a client
-// that never reads.
+// so terminal diagnostics still reach a reader that keeps up. A refused frame
+// never reached the client, so callers must not stream past one as if it had:
+// the tool loop settles the request with a visible diagnostic instead. Every
+// write settles on drain, close, error, or abort; a stalled or gone client can
+// never leave the request handler hanging on an unresolved promise. Pass a
+// signal: the deadline is the only bound on how long a write may wait for a
+// client that never reads.
 import { DEFAULT_MAX_PENDING_SSE_BYTES } from "./resource-limits.mjs";
 
 export function createSseWriter(res, { signal = null, maxPendingBytes = DEFAULT_MAX_PENDING_SSE_BYTES } = {}) {
@@ -51,6 +52,10 @@ export function createSseWriter(res, { signal = null, maxPendingBytes = DEFAULT_
     if (typeof frame !== "string") throw new TypeError("sse frames must be strings");
     if (closed) return false;
     const bytes = Buffer.byteLength(frame, "utf8");
+    // A frame larger than the whole budget can never sit inside it, on any
+    // path (empty queue, backpressure wait, or post-abort flush): refuse it
+    // outright so no single write can lift pending bytes past the cap.
+    if (bytes > maxPendingBytes) return false;
     // Backpressure: never queue past the budget while the stream may still
     // wait for this client to catch up.
     while (!stopped && pending() > 0 && pending() + bytes > maxPendingBytes) {
