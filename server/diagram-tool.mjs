@@ -200,7 +200,7 @@ export const artifactRegistry = new Map();
 
 // Executes one tool call. rawArgs is the JSON string the model produced.
 // Never throws — every failure mode comes back as {ok:false, ...}.
-export async function executeDiagramTool(rawArgs) {
+export async function executeDiagramTool(rawArgs, signal = null) {
   let args;
   try {
     args = JSON.parse(typeof rawArgs === "string" ? rawArgs : String(rawArgs));
@@ -218,10 +218,10 @@ export async function executeDiagramTool(rawArgs) {
     const htmlPath = path.join(dir, "artifact.html");
     writeFileSync(specPath, JSON.stringify(args.spec, null, 2));
 
-    const validated = await runCli(["validate", args.type, specPath, "--quality", QUALITY, "--json"]);
+    const validated = await runCli(["validate", args.type, specPath, "--quality", QUALITY, "--json"], signal);
     if (!validated.ok) return { ok: false, error: validated.error, diagnostics: validated.diagnostics };
 
-    const delivered = await runCli(["deliver", args.type, specPath, htmlPath, "--quality", QUALITY, "--json"]);
+    const delivered = await runCli(["deliver", args.type, specPath, htmlPath, "--quality", QUALITY, "--json"], signal);
     if (!delivered.ok) return { ok: false, error: delivered.error, diagnostics: delivered.diagnostics };
 
     const html = readFileSync(htmlPath, "utf8");
@@ -289,9 +289,14 @@ function checkArgsShape(args) {
 // Runs one diagramify command. Resolves {ok:true, receipt} or
 // {ok:false, error, diagnostics} — the CLI prints its JSON receipt on stdout
 // even when it fails, so real diagnostics survive.
-function runCli(cliArgs) {
+function runCli(cliArgs, signal = null) {
   return new Promise((resolve) => {
     const command = cliArgs[0];
+    if (signal?.aborted) {
+      resolve({ ok: false, error: `diagramify ${command} aborted`, diagnostics: [] });
+      return;
+    }
+
     const child = spawn(process.execPath, [CLI, ...cliArgs], {
       cwd: REPO_ROOT,
       stdio: ["ignore", "pipe", "pipe"],
@@ -305,16 +310,29 @@ function runCli(cliArgs) {
       child.kill("SIGKILL");
     }, SUBPROCESS_TIMEOUT_MS);
 
+    const onAbort = () => {
+      child.kill("SIGKILL");
+    };
+    if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+
     child.stdout.on("data", (chunk) => { stdout += chunk; });
     child.stderr.on("data", (chunk) => { stderr += chunk; });
 
     child.on("error", (err) => {
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
       resolve({ ok: false, error: `failed to run diagramify ${command}: ${err.message}`, diagnostics: [] });
     });
 
     child.on("close", (code) => {
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
+      if (signal?.aborted) {
+        resolve({ ok: false, error: `diagramify ${command} aborted`, diagnostics: [] });
+        return;
+      }
       if (timedOut) {
         resolve({
           ok: false,

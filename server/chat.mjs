@@ -12,7 +12,16 @@ import { existsSync, readFileSync } from "node:fs";
 import express from "express";
 import OpenAI from "openai";
 import { generateSystemPrompt } from "@openuidev/lang-core";
-import { pickCannedRecipe } from "./canned-recipe.mjs";
+import { isCannedInteractivePrompt, pickCannedRecipe } from "./canned-recipe.mjs";
+import {
+  registerArtifactRoutes,
+  diagramToolDeclaration,
+  diagramPromptBlock,
+  executeDiagramTool,
+  accumulateToolCalls,
+  assistantToolCallChunks,
+  toolResultChunk,
+} from "./diagram-tool.mjs";
 
 // ---------------------------------------------------------------------------
 // The briefing pack — built ONCE at startup. This is the AI's complete job
@@ -22,10 +31,15 @@ import { pickCannedRecipe } from "./canned-recipe.mjs";
 const spec = JSON.parse(
   readFileSync(new URL("../generated/chat-library.spec.json", import.meta.url), "utf8"),
 );
-const systemPrompt = generateSystemPrompt({
+const baseSystemPrompt = generateSystemPrompt({
   library: spec.library,
   promptOptions: spec.promptOptions,
 });
+const systemPrompt = `${baseSystemPrompt}\n\n${diagramPromptBlock}`;
+
+const promptExampleFixture = JSON.parse(
+  readFileSync(new URL("./examples/diagrams/prompt-example.architecture.json", import.meta.url), "utf8"),
+);
 
 const PORT = Number(process.env.PORT ?? 8787);
 const MODEL = process.env.OPENROUTER_MODEL || "";
@@ -43,6 +57,7 @@ if (liveMode && !MODEL) {
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
+registerArtifactRoutes(app);
 
 app.get("/api/health", (_req, res) => {
   res.json({ mode: liveMode ? "live" : "canned", model: MODEL });
@@ -84,9 +99,46 @@ app.post("/api/chat", async (req, res) => {
 
   try {
     if (!liveMode) {
+      const prompt = String(messages[messages.length - 1]?.content ?? "");
+      if (isCannedInteractivePrompt(prompt)) {
+        const toolCallId = `call_${Date.now().toString(36)}`;
+        const toolArgs = {
+          title: "Deploy Pipeline Architecture",
+          type: "architecture",
+          spec: promptExampleFixture,
+        };
+        const chunks = assistantToolCallChunks({
+          id: toolCallId,
+          name: "create_diagram",
+          arguments: JSON.stringify(toolArgs),
+        }, "canned-recipe");
+
+        for (const c of chunks) {
+          if (closed) return res.end();
+          write(c);
+          await new Promise((r) => setTimeout(r, 50));
+        }
+
+        const result = await executeDiagramTool(JSON.stringify(toolArgs), abort.signal);
+        if (closed) return res.end();
+
+        write(toolResultChunk({
+          toolCallId,
+          content: JSON.stringify(result),
+        }, "canned-recipe"));
+
+        await new Promise((r) => setTimeout(r, 50));
+        write(chunk(id, {
+          role: "assistant",
+          content: "I've created an interactive architecture map of the deploy pipeline. You can open and explore it in the artifact panel.",
+        }));
+        write(chunk(id, {}, "stop"));
+        write("data: [DONE]\n\n");
+        return res.end();
+      }
+
       // ---- canned mode: dictate the recipe line by line, like a real stream.
       // root arrives first so the frame renders before its children exist.
-      const prompt = String(messages[messages.length - 1]?.content ?? "");
       const lines = pickCannedRecipe(prompt).split("\n");
       write(chunk(id, { role: "assistant", content: "" }));
       for (const line of lines) {
@@ -99,23 +151,102 @@ app.post("/api/chat", async (req, res) => {
       return res.end();
     }
 
-    // ---- live mode: brief the chef, relay OpenRouter's stream untouched.
+    // ---- live mode: brief the chef, run bounded tool loop.
     const client = new OpenAI({
       baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
       apiKey,
     });
-    const stream = await client.chat.completions.create(
-      {
-        model: MODEL,
-        messages: [{ role: "system", content: systemPrompt }, ...messages],
-        stream: true,
-      },
-      { signal: abort.signal },
-    );
-    for await (const part of stream) {
+
+    const conversationMessages = [
+      { role: "system", content: systemPrompt },
+      ...messages,
+    ];
+
+    const MAX_ROUNDS = 3;
+    let round = 0;
+
+    while (round < MAX_ROUNDS) {
+      round++;
+      const stream = await client.chat.completions.create(
+        {
+          model: MODEL,
+          messages: conversationMessages,
+          tools: [diagramToolDeclaration],
+          stream: true,
+        },
+        { signal: abort.signal },
+      );
+
+      const toolDeltas = [];
+      let finishReason = null;
+      let assistantText = "";
+
+      for await (const part of stream) {
+        if (closed) break;
+        write(`data: ${JSON.stringify(part)}\n\n`);
+
+        const choice = part.choices?.[0];
+        if (choice?.delta?.content) {
+          assistantText += choice.delta.content;
+        }
+        if (choice?.delta?.tool_calls) {
+          toolDeltas.push(choice.delta.tool_calls);
+        }
+        if (choice?.finish_reason) {
+          finishReason = choice.finish_reason;
+        }
+      }
+
       if (closed) break;
-      write(`data: ${JSON.stringify(part)}\n\n`);
+
+      if (finishReason !== "tool_calls") {
+        break;
+      }
+
+      const toolCalls = accumulateToolCalls(toolDeltas);
+      if (toolCalls.length === 0) {
+        break;
+      }
+
+      conversationMessages.push({
+        role: "assistant",
+        content: assistantText || null,
+        tool_calls: toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.name, arguments: tc.arguments },
+        })),
+      });
+
+      const createDiagramCall = toolCalls.find((tc) => tc.name === "create_diagram") || toolCalls[0];
+      const result = await executeDiagramTool(createDiagramCall.arguments, abort.signal);
+      if (closed) break;
+
+      write(toolResultChunk({
+        toolCallId: createDiagramCall.id,
+        content: JSON.stringify(result),
+      }, MODEL));
+
+      conversationMessages.push({
+        role: "tool",
+        tool_call_id: createDiagramCall.id,
+        content: JSON.stringify(result),
+      });
+
+      if (result.ok) {
+        continue;
+      }
+
+      if (round >= MAX_ROUNDS) {
+        const diagMsg = result.diagnostics?.[0]?.message || result.error || "diagram specification failed validation";
+        write(chunk(id, {
+          role: "assistant",
+          content: `\n\nI couldn't produce a valid diagram — ${diagMsg}.`,
+        }, "stop"));
+        break;
+      }
     }
+
     write("data: [DONE]\n\n");
     return res.end();
   } catch (err) {

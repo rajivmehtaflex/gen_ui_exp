@@ -61,6 +61,11 @@ s4 = ExplainerStep("Reuse", "The browser stores the new response under its Cache
 tip = TextContent("Ask for this flow as a diagram next.", "small")`;
 
 // Keyword router for canned mode — mirrors what a live model would answer.
+export function isCannedInteractivePrompt(prompt) {
+  const text = String(prompt ?? "").toLowerCase();
+  return /interactive|explorable/.test(text);
+}
+
 export function pickCannedRecipe(prompt) {
   const text = String(prompt ?? "").toLowerCase();
   if (/sequence|lifecycle|timeline/.test(text)) return sequenceRecipe;
