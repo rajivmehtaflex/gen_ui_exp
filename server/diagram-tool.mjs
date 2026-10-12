@@ -106,6 +106,94 @@ export function accumulateToolCalls(deltas) {
   return Array.from(map.values());
 }
 
+export function assistantToolCallChunks({ id, name, arguments: args }, model = "diagram-model") {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const chunkId = `chatcmpl-${Date.now().toString(36)}`;
+
+  const chunk1 = `data: ${JSON.stringify({
+    id: chunkId,
+    object: "chat.completion.chunk",
+    created: timestamp,
+    model,
+    choices: [
+      {
+        index: 0,
+        delta: {
+          role: "assistant",
+          tool_calls: [
+            {
+              index: 0,
+              id,
+              type: "function",
+              function: { name, arguments: "" },
+            },
+          ],
+        },
+        finish_reason: null,
+      },
+    ],
+  })}\n\n`;
+
+  const chunk2 = `data: ${JSON.stringify({
+    id: chunkId,
+    object: "chat.completion.chunk",
+    created: timestamp,
+    model,
+    choices: [
+      {
+        index: 0,
+        delta: {
+          tool_calls: [
+            {
+              index: 0,
+              function: { arguments: args },
+            },
+          ],
+        },
+        finish_reason: null,
+      },
+    ],
+  })}\n\n`;
+
+  const chunk3 = `data: ${JSON.stringify({
+    id: chunkId,
+    object: "chat.completion.chunk",
+    created: timestamp,
+    model,
+    choices: [
+      {
+        index: 0,
+        delta: {},
+        finish_reason: "tool_calls",
+      },
+    ],
+  })}\n\n`;
+
+  return [chunk1, chunk2, chunk3];
+}
+
+export function toolResultChunk({ toolCallId, content }, model = "diagram-model") {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const chunkId = `chatcmpl-${Date.now().toString(36)}`;
+  return `data: ${JSON.stringify({
+    id: chunkId,
+    object: "chat.completion.chunk",
+    created: timestamp,
+    model,
+    choices: [
+      {
+        index: 0,
+        delta: {
+          role: "tool",
+          tool_call_id: toolCallId,
+          content: typeof content === "string" ? content : JSON.stringify(content),
+        },
+        finish_reason: null,
+      },
+    ],
+  })}\n\n`;
+}
+
 // id -> { title, type, html, hash }. Unbounded by design: this is a demo with
 // no persistence, and later tasks decide the eviction story.
 export const artifactRegistry = new Map();
