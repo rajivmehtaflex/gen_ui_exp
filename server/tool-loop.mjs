@@ -75,6 +75,8 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
     const toolDeltas = [];
     let finishReason = null;
     let assistantText = "";
+    let invalidFinalFinish = false;
+    let heldFinalStop = null;
     try {
       for await (const part of stream) {
         if (signal?.aborted) return;
@@ -82,10 +84,16 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
         if (choice?.delta?.content) assistantText += choice.delta.content;
         if (choice?.delta?.tool_calls) toolDeltas.push(choice.delta.tool_calls);
         if (choice?.finish_reason) finishReason = choice.finish_reason;
-        // The adapter stops reading assistant content after a stop frame. Keep
-        // an empty final stop back so the local visible fallback can be read.
-        if (!(finalRequest && choice?.finish_reason === "stop" && !assistantText.trim())) {
-          await emit(`data: ${JSON.stringify(part)}\n\n`);
+        if (finalRequest && choice?.finish_reason && !["stop", "tool_calls"].includes(choice.finish_reason)) {
+          invalidFinalFinish = true;
+        }
+        // The adapter ignores subsequent text after stop or failure. Release a
+        // final stop only after the provider stream itself ends successfully.
+        const frame = `data: ${JSON.stringify(part)}\n\n`;
+        if (finalRequest && choice?.finish_reason === "stop") {
+          heldFinalStop = frame;
+        } else if (!(finalRequest && invalidFinalFinish)) {
+          await emit(frame);
         }
       }
     } catch (error) {
@@ -97,9 +105,15 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
       throw error;
     }
     if (signal?.aborted) return;
+    if (finalRequest && invalidFinalFinish) {
+      await visibleStop(emit, model, "The diagram was created, but I couldn't finish the response. Open it in the artifact panel.");
+      return;
+    }
     if (finishReason !== "tool_calls") {
-      if (finalRequest && !assistantText.trim()) {
+      if (finalRequest && (finishReason !== "stop" || !assistantText.trim())) {
         await visibleStop(emit, model, "The diagram was created, but I couldn't finish the response. Open it in the artifact panel.");
+      } else if (finalRequest && heldFinalStop) {
+        await emit(heldFinalStop);
       }
       return;
     }
@@ -112,6 +126,7 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
     }
 
     const normalized = calls.map((call, index) => ({
+      index: call.index,
       id: typeof call.id === "string" && call.id.trim() ? call.id : `invalid_call_${batchNumber}_${index}`,
       name: call.name,
       arguments: call.arguments,

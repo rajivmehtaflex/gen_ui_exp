@@ -130,7 +130,7 @@ export function accumulateToolCalls(deltas) {
       const index = item.index ?? 0;
       let existing = map.get(index);
       if (!existing) {
-        existing = { id: "", name: "", arguments: "" };
+        existing = { index, id: "", name: "", arguments: "" };
         map.set(index, existing);
       }
       if (item.id) existing.id = item.id;
@@ -141,7 +141,7 @@ export function accumulateToolCalls(deltas) {
   return Array.from(map.values());
 }
 
-export function assistantToolCallChunks({ id, name, arguments: args }, model = "diagram-model") {
+export function assistantToolCallChunks({ id, name, arguments: args, index = 0 }, model = "diagram-model") {
   const timestamp = Math.floor(Date.now() / 1000);
   const chunkId = `chatcmpl-${Date.now().toString(36)}`;
 
@@ -157,7 +157,7 @@ export function assistantToolCallChunks({ id, name, arguments: args }, model = "
           role: "assistant",
           tool_calls: [
             {
-              index: 0,
+              index,
               id,
               type: "function",
               function: { name, arguments: "" },
@@ -180,7 +180,7 @@ export function assistantToolCallChunks({ id, name, arguments: args }, model = "
         delta: {
           tool_calls: [
             {
-              index: 0,
+              index,
               function: { arguments: args },
             },
           ],

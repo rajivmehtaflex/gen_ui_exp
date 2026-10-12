@@ -45,7 +45,12 @@ async function run(rounds, outcomes = [], initialMode = "auto", onEmit = null) {
       const next = rounds[requests.length - 1];
       if (next instanceof Error) throw next;
       assert.ok(next, `unexpected completion ${requests.length}`);
-      return (async function* () { for (const part of next) yield part; })();
+      return (async function* () {
+        for (const part of next) {
+          if (part instanceof Error) throw part;
+          yield part;
+        }
+      })();
     },
     executeTool: async (args, signal) => {
       assert.equal(signal, controller.signal);
@@ -178,6 +183,21 @@ await check("invalid_id_and_missing_name_not_executed", async () => {
   assert.ok(state.frames.some((frame) => frame.includes(`"id":"${state.results[0].id}"`)), "synthesized id must be streamed before its result");
 });
 
+await check("missing_id_mixed_batch_keeps_original_index", async () => {
+  const state = await run([
+    toolRound([validCall("valid"), { name: "create_diagram", arguments: "{}" }]),
+    textRound(),
+  ], [{ ok: true, diagramId: "good", title: "Good", type: "workflow" }]);
+  assert.deepEqual(state.results.map((result) => result.id), ["valid", "invalid_call_1_1"]);
+  assert.equal(state.executed.length, 1);
+  const starts = state.frames.flatMap((frame) => {
+    if (!frame.startsWith("data: {")) return [];
+    return JSON.parse(frame.slice(6)).choices?.[0]?.delta?.tool_calls ?? [];
+  }).filter((call) => call.id);
+  assert.equal(starts.find((call) => call.id === "valid")?.index, 0);
+  assert.equal(starts.find((call) => call.id === "invalid_call_1_1")?.index, 1);
+});
+
 await check("final_provider_failure_visible", async () => {
   const state = await run([toolRound([validCall("a")]), new Error("provider closed")], [
     { ok: true, diagramId: "diag", title: "D", type: "architecture" },
@@ -192,6 +212,31 @@ await check("empty_final_completion_visible", async () => {
     { ok: true, diagramId: "diag", title: "D", type: "architecture" },
   ]);
   assert.match(state.visibleText, /couldn't finish|unable to finish/i);
+});
+
+await check("partial_final_truncation_visible", async () => {
+  for (const finalRound of [
+    [chunk({ role: "assistant", content: "Partial text" }), chunk({}, "length")],
+    [chunk({ role: "assistant", content: "Partial text" })],
+  ]) {
+    const state = await run([toolRound([validCall("a")]), finalRound], [
+      { ok: true, diagramId: "diag", title: "D", type: "architecture" },
+    ]);
+    assert.match(state.visibleText, /couldn't finish|unable to finish/i);
+    assert.ok(state.frames.some((frame) => frame.includes('"finish_reason":"stop"')), "fallback must settle the stream");
+    assert.ok(!state.frames.some((frame) => frame.includes('"finish_reason":"length"')), "truncation must not preempt the fallback in the adapter");
+  }
+});
+
+await check("final_stop_then_stream_failure_keeps_fallback_visible", async () => {
+  const state = await run([
+    toolRound([validCall("a")]),
+    [...textRound("Partial text"), new Error("stream disconnected")],
+  ], [{ ok: true, diagramId: "diag", title: "D", type: "architecture" }]);
+  const fallbackIndex = state.frames.findIndex((frame) => frame.includes("couldn't finish"));
+  const stopIndex = state.frames.findIndex((frame) => frame.includes('"finish_reason":"stop"'));
+  assert.ok(fallbackIndex >= 0);
+  assert.ok(stopIndex > fallbackIndex, "first stop must settle after the fallback so the adapter reads it");
 });
 
 process.exitCode = failures ? 1 : 0;
