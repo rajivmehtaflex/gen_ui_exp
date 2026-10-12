@@ -61,15 +61,61 @@ export const diagramToolDeclaration = Object.freeze({
 export const diagramPromptBlock = `
 ## Interactive Diagram Tool (create_diagram)
 
-When the user asks for a rich, explorable, or interactive diagram (pan/zoom, relationship tracing, export), call \`create_diagram\`. For quick inline sketches in the chat, use inline Card components instead.
+### CRITICAL INSTRUCTION ON INTERACTIVE DIAGRAMS
+When the user asks for a rich, explorable, or interactive diagram (or asks for an architecture, dataflow, sequence, workflow, lifecycle, or explainer diagram):
+1. YOU MUST INVOKE THE \`create_diagram\` TOOL. Do NOT output openui-lang code (never output \`root = Card(...)\`).
+2. NEVER output mock cards or placeholder buttons like \`Button("Open Diagram")\`. The interactive diagram artifact is automatically rendered in an interactive viewer panel by the host platform.
+3. If a tool call fails validation, inspect the diagnosed errors and invoke \`create_diagram\` again with the corrected spec (maximum 2 retries). Do NOT output plain text explanations when retrying.
 
-### Diagram Types
-- architecture: system components, boundaries, services, deployments
-- workflow: business processes, human-in-the-loop flows, multi-stage procedures
-- sequence: request lifecycles, protocol handshakes, distributed messaging
-- dataflow: data transformations, pipelines, ETL stages, ingestion
-- lifecycle: entity states, state transitions, domain object phases
-- explainer-steps: multi-step conceptual walkthroughs, technical mechanics
+### Diagram Types and Schemas
+
+All diagrams share:
+- \`schema_version\`: 1
+- \`meta\`: \`{ "title": string, "quality_profile": "showcase" }\` (omit subtitle, legend, and visual_preset)
+- Component \`type\` enum (where applicable): "frontend" | "backend" | "database" | "cloud" | "security" | "messagebus" | "external"
+- Variant enum: "default" | "emphasis" | "security" | "dashed"
+
+#### 1. architecture
+System components, boundaries, services, deployments.
+- \`diagram_type\`: "architecture"
+- \`components\`: array of \`{ "id": string, "type": componentType, "label": string, "sublabel"?: string, "tier": integer (0..4), "col": integer (0..4), "tag"?: string }\`
+- \`connections\`: array of \`{ "from": string, "to": string, "label"?: string, "variant"?: variant }\`
+
+#### 2. dataflow
+Data transformations, streaming pipelines, ETL stages, event ingestion.
+- \`diagram_type\`: "dataflow"
+- \`stages\`: array of 2 to 5 stage objects: \`[{ "label": string }, ...]\` (MUST be objects with "label", NEVER strings!).
+- \`nodes\`: array of \`{ "id": string, "type": componentType, "label": string, "sublabel"?: string, "stage": integer (0-indexed integer corresponding to stages array, e.g. 0, 1, 2; NEVER string!), "row": integer (1-indexed row position >= 1, e.g. 1, 2; NEVER 0!), "tag"?: string }\`
+- \`flows\`: array of \`{ "from": string, "to": string, "label": string, "classification"?: string, "variant"?: variant, "route"?: "auto" | "straight" | "bottom-channel" | "top-channel" }\`
+*(CRITICAL: Use "flows", NOT "edges" or "connections". Use "nodes", NOT "components".)*
+
+#### 3. sequence
+Request lifecycles, protocol handshakes, distributed messaging.
+- \`diagram_type\`: "sequence"
+- \`participants\`: array of \`{ "id": string, "type": componentType, "label": string, "sublabel"?: string }\`
+- \`messages\`: array of \`{ "id": string, "from": string, "to": string, "y": integer (increasing vertical coordinate >= 150, e.g. 180, 240, 300), "label": string, "variant"?: "default" | "emphasis" | "security" | "return" | "dashed" }\`
+- \`activations\`?: array of \`{ "participant": string, "from": number, "to": number, "type"?: componentType }\`
+
+#### 4. workflow
+Business processes, human-in-the-loop flows, multi-stage procedures.
+- \`diagram_type\`: "workflow"
+- \`lanes\`: array of \`{ "id": string, "label": string, "variant"?: "normal" | "exception" }\`
+- \`nodes\`: array of \`{ "id": string, "lane": string (lane id), "col": integer (0..5), "type": componentType, "label": string, "sublabel"?: string }\`
+- \`edges\`: array of \`{ "from": string, "to": string, "label"?: string, "variant"?: variant }\`
+*(CRITICAL: Use "edges".)*
+
+#### 5. lifecycle
+Entity states, state transitions, domain object phases.
+- \`diagram_type\`: "lifecycle"
+- \`lanes\`: array of 1 to 4 objects \`{ "id": string, "label": string }\`
+- \`states\`: array of \`{ "id": string, "type": "start" | "active" | "waiting" | "decision" | "success" | "failure" | "neutral" | "external", "label": string, "sublabel"?: string, "lane": string (lane id), "col": integer (0..4), "tag"?: string }\`
+- \`transitions\`: array of \`{ "from": string, "to": string, "label"?: string, "variant"?: variant, "route"?: "auto" | "straight" | "drop" | "bottom-channel" | "top-channel" }\`
+*(CRITICAL: Use "transitions".)*
+
+#### 6. explainer-steps
+Multi-step conceptual walkthroughs, technical mechanics.
+- \`diagram_type\`: "explainer-steps"
+- \`steps\`: array of \`{ "id": string, "type": "start" | "active" | "waiting" | "decision" | "success" | "failure" | "neutral" | "external", "label": string, "sublabel"?: string, "description"?: string, "code"?: { "language": string, "content": string }, "math"?: string }\`
 
 ### Authoring Rules
 1. Always generate valid diagramify JSON for the specified \`type\`.
@@ -77,7 +123,6 @@ When the user asks for a rich, explorable, or interactive diagram (pan/zoom, rel
 3. Keep diagrams focused: <=12 primary nodes and one main flow path.
 4. Set meta.quality_profile: "showcase".
 5. Omit meta.subtitle, meta.legend, and meta.visual_preset.
-6. If a tool call fails validation, correct only the diagnosed errors (maximum 2 retries). If still failing, explain the issue honestly.
 
 ### Canonical Example (architecture)
 \`\`\`json

@@ -162,16 +162,32 @@ app.post("/api/chat", async (req, res) => {
       ...messages,
     ];
 
+    const lastUserMsg = messages[messages.length - 1]?.content ?? "";
+    const isInteractiveQuery = /(?:interactive|explorable|diagramify|artifact|(?:dataflow|architecture|sequence|workflow|lifecycle|explainer).*diagram)/i.test(
+      String(lastUserMsg)
+    );
+
     const MAX_ROUNDS = 3;
     let round = 0;
+    let lastToolResult = null;
 
     while (round < MAX_ROUNDS) {
       round++;
+      let toolChoice = "auto";
+      if (round === 1 && isInteractiveQuery) {
+        toolChoice = { type: "function", function: { name: "create_diagram" } };
+      } else if (lastToolResult && !lastToolResult.ok) {
+        toolChoice = { type: "function", function: { name: "create_diagram" } };
+      } else if (lastToolResult && lastToolResult.ok) {
+        toolChoice = "none";
+      }
+
       const stream = await client.chat.completions.create(
         {
           model: MODEL,
           messages: conversationMessages,
           tools: [diagramToolDeclaration],
+          tool_choice: toolChoice,
           stream: true,
         },
         { signal: abort.signal },
@@ -232,6 +248,8 @@ app.post("/api/chat", async (req, res) => {
         tool_call_id: createDiagramCall.id,
         content: JSON.stringify(result),
       });
+
+      lastToolResult = result;
 
       if (result.ok) {
         continue;
