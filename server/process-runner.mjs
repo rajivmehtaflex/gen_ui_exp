@@ -1,9 +1,21 @@
 import { spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
+
+async function waitForGroupExit(pid) {
+  for (;;) {
+    try { process.kill(-pid, 0); }
+    catch (error) {
+      if (error.code === "ESRCH") return;
+      throw error;
+    }
+    await delay(20);
+  }
+}
 
 // Run a command as a job: its descendants must end before callers remove any
 // files that the command may still be using.
 export function runProcessTree({ file, args = [], cwd, signal, timeoutMs = 15_000,
-  maxOutputBytes = 1024 * 1024, env, onStdout }) {
+  maxOutputBytes = 1024 * 1024, env, onStdout, platform = process.platform }) {
   if (signal?.aborted) {
     return Promise.resolve({ ok: false, stdout: "", stderr: "", error: "process aborted" });
   }
@@ -16,6 +28,7 @@ export function runProcessTree({ file, args = [], cwd, signal, timeoutMs = 15_00
     const stdoutChunks = [];
     const stderrChunks = [];
     let timer;
+    let forceSettleTimer;
     let termination = Promise.resolve();
     let finished = false;
 
@@ -25,27 +38,50 @@ export function runProcessTree({ file, args = [], cwd, signal, timeoutMs = 15_00
     });
     const cleanup = () => {
       clearTimeout(timer);
+      clearTimeout(forceSettleTimer);
       signal?.removeEventListener("abort", onAbort);
     };
     const settle = async (result) => {
       if (finished) return;
       finished = true;
       cleanup();
-      await termination;
+      try { await termination; }
+      catch (error) { result = { ok: false, error: `${reason}: group termination failed: ${error.message}` }; }
       resolve({ ...output(), ...result });
     };
     const terminate = (why) => {
       if (reason || !child?.pid) return;
       reason = why;
-      if (process.platform === "win32") {
+      if (platform === "win32") {
         termination = new Promise((done) => {
-          const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"],
-            { stdio: "ignore", windowsHide: true });
-          killer.once("error", done);
-          killer.once("close", done);
+          let killer;
+          let doneOnce = false;
+          const finish = (error) => {
+            if (doneOnce) return;
+            doneOnce = true;
+            if (error) {
+              reason = `${why}: taskkill failed: ${error.message}`;
+              try {
+                if (process.platform === "win32") child.kill("SIGKILL");
+                else process.kill(-child.pid, "SIGKILL");
+              } catch { /* Report the taskkill failure even if fallback kill fails. */ }
+              // A failed tree killer must not leave the request pending forever.
+              forceSettleTimer = setTimeout(() => settle({ ok: false, error: reason }), 1000);
+            }
+            done();
+          };
+          try {
+            killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"],
+              { stdio: "ignore", windowsHide: true });
+            killer.once("error", finish);
+            killer.once("close", (code) => finish(code === 0 ? null : new Error(`exit code ${code}`)));
+          } catch (error) { finish(error); }
         });
       } else {
-        try { process.kill(-child.pid, "SIGKILL"); }
+        try {
+          process.kill(-child.pid, "SIGKILL");
+          termination = waitForGroupExit(child.pid);
+        }
         catch (error) { if (error.code !== "ESRCH") reason = `${why}: ${error.message}`; }
       }
     };

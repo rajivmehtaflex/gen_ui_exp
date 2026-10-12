@@ -36,9 +36,66 @@ check("abort_kills_descendants", async () => {
 });
 
 check("timeout_kills_descendants_while_checker_runs", async () => {
-  const result = await runProcessTree({ file: process.execPath, args: [fixture, "checker"], timeoutMs: 500 });
+  const result = await runProcessTree({ file: process.execPath, args: [fixture, "checker"], timeoutMs: 1000 });
   assert.equal(result.ok, false);
   assert.match(result.error, /timed out/i);
+  assert.match(result.stdout, /check-render-output\.mjs/, "fixture must spawn the vendored checker");
+  assert.match(result.stdout, /checker-reading/, "checker must reach its file read before timeout");
+  for (const pid of pids(result.stdout)) {
+    assert.equal(alive(pid), false, `runner resolved before PID ${pid} exited`);
+  }
+});
+
+check("deadline_timer_is_cleared", async () => {
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const active = new Set();
+  globalThis.setTimeout = (callback, ms, ...args) => {
+    const timer = originalSetTimeout(callback, ms, ...args);
+    if (ms === 10_000) active.add(timer);
+    return timer;
+  };
+  globalThis.clearTimeout = (timer) => {
+    active.delete(timer);
+    return originalClearTimeout(timer);
+  };
+  try {
+    const result = await runProcessTree({ file: process.execPath, args: [fixture], timeoutMs: 10_000 });
+    assert.equal(result.ok, true);
+    assert.equal(active.size, 0, "deadline timer survived process completion");
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+    for (const timer of active) originalClearTimeout(timer);
+  }
+});
+
+check("waits_for_group_exit_before_resolving", async () => {
+  const originalKill = process.kill;
+  let probes = 0;
+  process.kill = (pid, signal) => {
+    if (pid < 0 && signal === 0) {
+      probes++;
+      if (probes < 5) return true;
+    }
+    return originalKill(pid, signal);
+  };
+  try {
+    const result = await runProcessTree({ file: process.execPath, args: [fixture, "parent"], timeoutMs: 500 });
+    assert.equal(result.ok, false);
+    assert.ok(probes >= 5, `resolved after only ${probes} group-exit checks`);
+    for (const pid of pids(result.stdout)) assert.equal(alive(pid), false);
+  } finally { process.kill = originalKill; }
+});
+
+check("windows_taskkill_failure_settles", async () => {
+  const result = await Promise.race([
+    runProcessTree({ file: process.execPath, args: [fixture, "parent"], timeoutMs: 200,
+      platform: "win32" }),
+    delay(1500).then(() => { throw new Error("failed taskkill left runner pending"); }),
+  ]);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /taskkill/i);
   for (const pid of pids(result.stdout)) await waitDead(pid);
 });
 

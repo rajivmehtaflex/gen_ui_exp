@@ -129,11 +129,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Produce `runProcessTree({file,args,cwd,signal,timeoutMs,maxOutputBytes}): Promise<{ok:boolean,stdout:string,stderr:string,error?:string}>`. On POSIX use a separate process group and group termination; provide an explicit Windows tree termination implementation if claiming Windows support. `executeDiagramTool` must always resolve its result union even when cleanup fails.
 
-- [ ] Fixture spawns a long-lived grandchild and records its PID. Add `abort_kills_descendants`, `timeout_kills_descendants`, `already_aborted_no_spawn`, `spawn_error_settles_once`, and `cleanup_failure_preserves_result`; assert child and grandchild terminate and listeners/timers are removed. Inject cleanup instead of changing real filesystem permissions globally.
-- [ ] Run `node scripts/test-process-runner.mjs`; confirm the present outer-child-only kill and cleanup behavior fails the regressions.
-- [ ] Route validate/deliver through the runner. Bound stdout and stderr each to 1 MiB, terminate the tree on limit/abort/15-second command deadline, drain/wait before deleting app temp files, and catch/log cleanup errors. Track vendor-created temp directory leakage in aborted validation; contain it in a job temp root or add a narrowly documented vendor cleanup patch if needed.
-- [ ] Re-run process and existing diagram-tool checks; require correct diagnostics, no surviving PIDs and clean successful execution. Include timeout during checker, not only renderer.
-- [ ] Commit with `fix(tools): terminate render process trees and preserve cleanup results`.
+- [x] Fixture spawns a long-lived grandchild and records its PID. Add `abort_kills_descendants`, `timeout_kills_descendants`, `already_aborted_no_spawn`, `spawn_error_settles_once`, and `cleanup_failure_preserves_result`; assert child and grandchild terminate and listeners/timers are removed. Inject cleanup instead of changing real filesystem permissions globally.
+- [x] Run `node scripts/test-process-runner.mjs`; confirm the present outer-child-only kill and cleanup behavior fails the regressions.
+- [x] Route validate/deliver through the runner. Bound stdout and stderr each to 1 MiB, terminate the tree on limit/abort/15-second command deadline, drain/wait before deleting app temp files, and catch/log cleanup errors. Track vendor-created temp directory leakage in aborted validation; contain it in a job temp root or add a narrowly documented vendor cleanup patch if needed.
+- [x] Re-run process and existing diagram-tool checks; require correct diagnostics, no surviving PIDs and clean successful execution. Include timeout during checker, not only renderer.
+- [x] Commit with `fix(tools): terminate render process trees and preserve cleanup results`.
 
 ### Task 8: Bound the in-memory artifact store (part of G14)
 
