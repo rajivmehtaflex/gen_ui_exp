@@ -81,6 +81,55 @@ for (const [family, recipe] of [["flow", flow], ["sequence", sequence], ["explai
   assert.deepEqual(errors, [], `${family} recipe parse errors: ${JSON.stringify(errors)}`);
 }
 
+// 6. Array maxima are carried by the authoring JSON Schema. OpenUI's streaming
+// parser resolves references and preserves parser diagnostics, but does not
+// enforce JSON Schema maxItems while parsing, so render-time normalization is
+// exercised separately by test-diagram-layout.mjs.
+const flowRecipe = (nodeCount, edgeCount) => {
+  const nodeRefs = Array.from({ length: nodeCount }, (_, i) => `n${i}`);
+  const edgeRefs = Array.from({ length: edgeCount }, (_, i) => `e${i}`);
+  const nodeDefs = nodeRefs.map((id, i) => `${id} = FlowNode("n${i}", "Node ${i}")`).join("\n");
+  const edgeDefs = edgeRefs
+    .map((id) => `${id} = FlowEdge("n0", "n1", "next")`)
+    .join("\n");
+  return `root = Card([diagram])\ndiagram = FlowDiagram([${nodeRefs.join(", ")}], [${edgeRefs.join(", ")}])\n${nodeDefs}\n${edgeDefs}`;
+};
+const sequenceRecipe = (participantCount, messageCount) => {
+  const participantRefs = Array.from({ length: participantCount }, (_, i) => `p${i}`);
+  const messageRefs = Array.from({ length: messageCount }, (_, i) => `m${i}`);
+  const participantDefs = participantRefs
+    .map((id, i) => `${id} = Participant("p${i}", "Participant ${i}")`)
+    .join("\n");
+  const messageDefs = messageRefs
+    .map((id) => `${id} = Message("p0", "p1", "request")`)
+    .join("\n");
+  return `root = Card([diagram])\ndiagram = SequenceDiagram([${participantRefs.join(", ")}], [${messageRefs.join(", ")}])\n${participantDefs}\n${messageDefs}`;
+};
+const explainerRecipe = (stepCount) => {
+  const refs = Array.from({ length: stepCount }, (_, i) => `s${i}`);
+  const definitions = refs.map((id, i) => `${id} = ExplainerStep("Step ${i}")`).join("\n");
+  return `root = Card([diagram])\ndiagram = StepExplainer([${refs.join(", ")}])\n${definitions}`;
+};
+const errorsFor = (recipe) => parser.parse(recipe).meta?.errors ?? [];
+const authoringSchema = lib.toJSONSchema();
+const maxItems = (component, prop) => authoringSchema.$defs?.[component]?.properties?.[prop]?.maxItems;
+assert.equal(maxItems("FlowDiagram", "nodes"), 12, "flow schema caps nodes at 12 (13 is over bound)");
+assert.equal(maxItems("FlowDiagram", "edges"), 24, "flow schema caps edges at 24 (25 is over bound)");
+assert.equal(maxItems("SequenceDiagram", "participants"), 6, "sequence schema caps participants at 6 (7 is over bound)");
+assert.equal(maxItems("SequenceDiagram", "messages"), 12, "sequence schema caps messages at 12 (13 is over bound)");
+assert.equal(maxItems("StepExplainer", "steps"), 12, "explainer schema caps steps at 12 (13 is over bound)");
+assert.deepEqual(errorsFor(flowRecipe(12, 24)), [], "12 flow nodes and 24 referenced edges retain parser behavior");
+assert.deepEqual(errorsFor(sequenceRecipe(6, 12)), [], "6 participants and 12 messages retain parser behavior");
+assert.deepEqual(errorsFor(explainerRecipe(12)), [], "12 ordered steps retain parser behavior");
+
+// A partial OpenUI stream still reports parser diagnostics. Array bounds do not
+// convert an incomplete referenced component into a successful parse.
+const partial = parser.parse("root = Card([diagram])\ndiagram = FlowDiagram([n1]");
+assert.ok(
+  (partial.meta?.errors ?? []).some((error) => error.code === "missing-required" && error.path === "/edges"),
+  "partial FlowDiagram reference should retain its missing-required parser diagnostic",
+);
+
 console.log(
-  `test-library OK — ${builtIn.length} built-ins + 8 diagram components, root ${lib.root}, 3 family recipes parse clean`,
+  `test-library OK — ${builtIn.length} built-ins + 8 diagram components, 3 family recipes parse clean, bounded arrays and partial parser diagnostics hold`,
 );

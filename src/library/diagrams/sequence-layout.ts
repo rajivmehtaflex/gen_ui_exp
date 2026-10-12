@@ -16,10 +16,21 @@ export interface SeqLane {
   x: number;
   label: string;
 }
+export interface SeqBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
 export interface SeqArrow {
+  from: string;
+  to: string;
+  fullLabel: string;
   x1: number;
   x2: number;
   y: number;
+  path: string;
+  bounds: SeqBounds;
   label: string;
   labelX: number;
   labelY: number;
@@ -74,34 +85,72 @@ export function layoutSequence(participants: ParticipantInput[], messages: Messa
     let label = full;
     let labelHalfWidth = (full.length * LABEL_CHAR) / 2;
     let truncated = false;
-    if (fi !== ti && labelHalfWidth * 2 > maxW) { // self-loops label above the loop — no span limit
+    let labelX = (x1 + x2) / 2;
+    let labelY = y - 8;
+    let path: string;
+    let bounds: SeqBounds;
+    const selfLoop = fi === ti;
+
+    if (!selfLoop && labelHalfWidth * 2 > maxW) {
       truncated = true;
       label = full.slice(0, Math.max(4, Math.floor(maxW / LABEL_CHAR) - 1)) + "…";
       labelHalfWidth = (label.length * LABEL_CHAR) / 2;
     }
+
+    if (selfLoop) {
+      // Keep the path's shape and the full label's measured extent together so
+      // the SVG viewBox includes both on the last participant lane.
+      labelX = x1 + 44;
+      labelY = y + 12;
+      path = `M ${x1} ${y} h 30 a 6 6 0 0 1 6 6 v 10 a 6 6 0 0 1 -6 6 h -22`;
+      bounds = {
+        left: x1 - 2,
+        top: y - 2,
+        right: Math.max(x1 + 38, labelX + labelHalfWidth * 2 + 2),
+        bottom: y + 24,
+      };
+    } else {
+      path = `M ${x1} ${y} L ${x2} ${y}`;
+      bounds = {
+        left: Math.min(x1, x2) - 8,
+        top: Math.min(y - 8, labelY - 8),
+        right: Math.max(x1, x2) + 8,
+        bottom: Math.max(y + 4, labelY + 8),
+      };
+      bounds.left = Math.min(bounds.left, labelX - labelHalfWidth - 2);
+      bounds.right = Math.max(bounds.right, labelX + labelHalfWidth + 2);
+    }
+
     arrows.push({
+      from: m.from,
+      to: m.to,
+      fullLabel: full,
       x1,
       x2,
       y,
+      path,
+      bounds,
       label,
-      labelX: (x1 + x2) / 2,
-      labelY: y - 8,
+      labelX,
+      labelY,
       labelHalfWidth,
       truncated,
       kind: m.kind ?? "sync",
-      selfLoop: fi === ti,
+      selfLoop,
     });
   });
 
   const lastY = arrows.length ? arrows[arrows.length - 1].y : FIRST_ROW;
   const lifelines = lanes.map((l) => ({ x: l.x, y1: HEADER_Y + HEADER_H, y2: lastY + 24 }));
   const rightMost = lanes.length ? laneX(lanes.length - 1) : PAD;
+  const rightBounds = arrows.reduce((right, arrow) => Math.max(right, arrow.bounds.right), rightMost);
+  const bottomBounds = arrows.reduce((bottom, arrow) => Math.max(bottom, arrow.bounds.bottom), lastY + 24);
   return {
     lanes,
     arrows,
     lifelines,
-    width: rightMost + PAD,
-    height: lastY + 60,
+    width: rightBounds + PAD,
+    height: Math.max(lastY + 60, bottomBounds + 8),
     dropped,
   };
 }

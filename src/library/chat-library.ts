@@ -14,6 +14,13 @@ import {
 import { FlowDiagram, FlowEdge, FlowNode } from "./diagrams/flow";
 import { Message, Participant, SequenceDiagram } from "./diagrams/sequence";
 import { ExplainerStep, StepExplainer } from "./diagrams/explainer";
+import {
+  MAX_EXPLAINER_STEPS,
+  MAX_FLOW_EDGES,
+  MAX_FLOW_NODES,
+  MAX_SEQUENCE_MESSAGES,
+  MAX_SEQUENCE_PARTICIPANTS,
+} from "./diagrams/limits";
 
 export const diagramGroup: ComponentGroup = {
   name: "Diagrams",
@@ -28,9 +35,9 @@ export const diagramGroup: ComponentGroup = {
     "ExplainerStep",
   ],
   notes: [
-    "- FlowDiagram: define one FlowNode reference per node; ids are short unique slugs (n1, api); every FlowEdge from/to must match a node id; 12 nodes max.",
-    "- SequenceDiagram: define Participant references first, then Message references in chronological order; from/to must match participant ids; 6 participants / 12 messages max.",
-    "- Use StepExplainer for concept walkthroughs (how X works); use Steps for ordered task instructions.",
+    `- FlowDiagram: define one FlowNode reference per node; ids are short unique slugs (n1, api); every FlowEdge from/to must match a node id; ${MAX_FLOW_NODES} nodes / ${MAX_FLOW_EDGES} edges max; do not connect a node to itself.`,
+    `- SequenceDiagram: define Participant references first, then Message references in chronological order; from/to must match participant ids; ${MAX_SEQUENCE_PARTICIPANTS} participants / ${MAX_SEQUENCE_MESSAGES} messages max.`,
+    `- Use StepExplainer for concept walkthroughs (how X works) with at most ${MAX_EXPLAINER_STEPS} ordered ExplainerStep references; use Steps for ordered task instructions.`,
     "- Diagrams render inside the chat card - keep labels short; wide diagrams scroll horizontally.",
   ],
 };
@@ -98,9 +105,9 @@ s3 = ExplainerStep("Server decision", "An unchanged resource answers 304 with no
 s4 = ExplainerStep("Reuse", "The browser stores the new response with its Cache-Control policy and serves it until it goes stale.")`;
 
 const diagramRules = [
-  'FlowDiagram takes nodes first, then edges: FlowDiagram([n1, n2], [e1, e2], "LR"). Every FlowNode id must be unique and every FlowEdge from/to must reference a defined node id - never connect a node to itself.',
-  'SequenceDiagram is positional: Message(from, to, label, kind?). from/to are Participant ids; list messages top-to-bottom in time order; a reply is kind "return".',
-  "StepExplainer(+ExplainerStep) explains how something works step by step; body, code and note are plain strings - never nest components inside an ExplainerStep. Use Steps for task/UI instructions instead.",
+  `FlowDiagram takes nodes first, then edges: FlowDiagram([n1, n2], [e1, e2], "LR"). Use at most ${MAX_FLOW_NODES} unique nodes and ${MAX_FLOW_EDGES} edges. Every FlowEdge from/to must reference a defined node id - never connect a node to itself.`,
+  `SequenceDiagram is positional: Message(from, to, label, kind?). Use at most ${MAX_SEQUENCE_PARTICIPANTS} participants and ${MAX_SEQUENCE_MESSAGES} messages. from/to are Participant ids; list messages top-to-bottom in time order; a reply is kind "return".`,
+  `StepExplainer(+ExplainerStep) explains how something works step by step with at most ${MAX_EXPLAINER_STEPS} steps; body, code and note are plain strings - never nest components inside an ExplainerStep. Use Steps for task/UI instructions instead.`,
   'Prefer direction "LR" for pipelines and dataflows, "TB" for decision-heavy workflows in FlowDiagram.',
   "Keep diagram text short: node and step titles 1-5 words, edge labels 1-3 words, message labels a short phrase.",
 ];

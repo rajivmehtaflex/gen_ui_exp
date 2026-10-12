@@ -1,6 +1,6 @@
 // Pure flow-diagram layout math (no React) — Node-testable.
 // Ruling R0: duplicate ids THROW (authoring bug); edges with unknown endpoints
-// are DROPPED and reported in `dropped[]` (model hallucination is data-level).
+// and unsupported self-edges are DROPPED and reported in `dropped[]`.
 import { Graph, layout } from "@dagrejs/dagre";
 
 export interface FlowNodeInput {
@@ -111,7 +111,7 @@ export function layoutFlow(
 
   const dropped: { from: string; to: string }[] = [];
   const valid = edges.filter((e) => {
-    const ok = seen.has(e.from) && seen.has(e.to);
+    const ok = e.from !== e.to && seen.has(e.from) && seen.has(e.to);
     if (!ok) dropped.push({ from: e.from, to: e.to });
     return ok;
   });

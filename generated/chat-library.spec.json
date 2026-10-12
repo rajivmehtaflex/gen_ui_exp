@@ -580,9 +580,9 @@
           "ExplainerStep"
         ],
         "notes": [
-          "- FlowDiagram: define one FlowNode reference per node; ids are short unique slugs (n1, api); every FlowEdge from/to must match a node id; 12 nodes max.",
+          "- FlowDiagram: define one FlowNode reference per node; ids are short unique slugs (n1, api); every FlowEdge from/to must match a node id; 12 nodes / 24 edges max; do not connect a node to itself.",
           "- SequenceDiagram: define Participant references first, then Message references in chronological order; from/to must match participant ids; 6 participants / 12 messages max.",
-          "- Use StepExplainer for concept walkthroughs (how X works); use Steps for ordered task instructions.",
+          "- Use StepExplainer for concept walkthroughs (how X works) with at most 12 ordered ExplainerStep references; use Steps for ordered task instructions.",
           "- Diagrams render inside the chat card - keep labels short; wide diagrams scroll horizontally."
         ]
       }
@@ -4925,12 +4925,14 @@
           "type": "object",
           "properties": {
             "nodes": {
+              "maxItems": 12,
               "type": "array",
               "items": {
                 "$ref": "#/$defs/FlowNode"
               }
             },
             "edges": {
+              "maxItems": 24,
               "type": "array",
               "items": {
                 "$ref": "#/$defs/FlowEdge"
@@ -5006,12 +5008,14 @@
           "type": "object",
           "properties": {
             "participants": {
+              "maxItems": 6,
               "type": "array",
               "items": {
                 "$ref": "#/$defs/Participant"
               }
             },
             "messages": {
+              "maxItems": 12,
               "type": "array",
               "items": {
                 "$ref": "#/$defs/Message"
@@ -5078,6 +5082,7 @@
           "type": "object",
           "properties": {
             "steps": {
+              "maxItems": 12,
               "type": "array",
               "items": {
                 "$ref": "#/$defs/ExplainerStep"
@@ -5170,9 +5175,9 @@
       "Every Button label must accurately describe what clicking it does; use \"primary\" for the main action and \"secondary\"/\"tertiary\" only for lower-emphasis supporting actions.",
       "Icon: always include the category argument — it enables fallback matching when the exact lucide name is unavailable.",
       "Pass sources on Card ONLY when the answer relies on real references you actually have, and cite them inline in TextContent as [1], [2] (1-based index into sources).",
-      "FlowDiagram takes nodes first, then edges: FlowDiagram([n1, n2], [e1, e2], \"LR\"). Every FlowNode id must be unique and every FlowEdge from/to must reference a defined node id - never connect a node to itself.",
-      "SequenceDiagram is positional: Message(from, to, label, kind?). from/to are Participant ids; list messages top-to-bottom in time order; a reply is kind \"return\".",
-      "StepExplainer(+ExplainerStep) explains how something works step by step; body, code and note are plain strings - never nest components inside an ExplainerStep. Use Steps for task/UI instructions instead.",
+      "FlowDiagram takes nodes first, then edges: FlowDiagram([n1, n2], [e1, e2], \"LR\"). Use at most 12 unique nodes and 24 edges. Every FlowEdge from/to must reference a defined node id - never connect a node to itself.",
+      "SequenceDiagram is positional: Message(from, to, label, kind?). Use at most 6 participants and 12 messages. from/to are Participant ids; list messages top-to-bottom in time order; a reply is kind \"return\".",
+      "StepExplainer(+ExplainerStep) explains how something works step by step with at most 12 steps; body, code and note are plain strings - never nest components inside an ExplainerStep. Use Steps for task/UI instructions instead.",
       "Prefer direction \"LR\" for pipelines and dataflows, \"TB\" for decision-heavy workflows in FlowDiagram.",
       "Keep diagram text short: node and step titles 1-5 words, edge labels 1-3 words, message labels a short phrase."
     ]

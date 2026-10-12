@@ -4,6 +4,10 @@ import { layoutFlow, wrapLabel, pointsToPath } from "../src/library/diagrams/flo
 import { layoutSequence } from "../src/library/diagrams/sequence-layout";
 import { dedupeById } from "../src/library/diagrams/dedupe";
 
+const limits = await import("../src/library/diagrams/limits").catch(() => null);
+assert.ok(limits, "diagram limits module must provide render-time normalizers");
+const { normalizeFlow, normalizeSequence, normalizeSteps } = limits;
+
 // Duplicate ids (a model hallucination the parser cannot see) must be de-duped
 // BEFORE layout — keeping the first occurrence and reporting the count — so the
 // view can show a note instead of the layout throwing into a silent error
@@ -67,6 +71,12 @@ const dangling = layoutFlow(nodes, [...edges, { from: "ci", to: "ghost" }], "TB"
 assert.equal(dangling.edges.length, edges.length, "dangling edge must be dropped");
 assert.equal(dangling.dropped.length, 1, "dangling edge must be reported in dropped[]");
 
+// The self-edge rule also holds in the pure layout helper and remains visible
+// through its existing dropped diagnostics.
+const selfEdge = layoutFlow([{ id: "only", label: "Only" }], [{ from: "only", to: "only" }]);
+assert.equal(selfEdge.edges.length, 0, "flow self-edge must not be laid out");
+assert.deepEqual(selfEdge.dropped, [{ from: "only", to: "only" }], "flow self-edge must be reported");
+
 // Duplicate id: authoring bug, throws.
 assert.throws(() => layoutFlow([...nodes, nodes[0]], edges, "TB"), /[Dd]uplicate/);
 
@@ -126,4 +136,86 @@ assert.throws(() => layoutSequence([participants[0], participants[0]], messages)
 const tiny = layoutSequence([participants[0]], []);
 assert.ok(Number.isFinite(tiny.width) && Number.isFinite(tiny.height));
 
-console.log("test-diagram-layout OK — flow + sequence");
+// A last-lane self-loop keeps the entire path and the full 120-character label
+// inside the SVG viewBox. The renderer can show a short visual label plus a
+// full-label alternative, but layout must account for the latter's extent.
+const longLoopLabel = "self loop " + "x".repeat(110);
+const lastLaneLoop = layoutSequence(
+  [{ id: "solo", label: "Solo" }],
+  [{ from: "solo", to: "solo", label: longLoopLabel }],
+);
+const longLoop = lastLaneLoop.arrows[0];
+assert.equal(longLoop.from, "solo");
+assert.equal(longLoop.to, "solo");
+assert.equal(longLoop.fullLabel, longLoopLabel);
+assert.ok(longLoop.bounds.left >= 0 && longLoop.bounds.right <= lastLaneLoop.width, "self-loop path and label must fit horizontally");
+assert.ok(longLoop.bounds.top >= 0 && longLoop.bounds.bottom <= lastLaneLoop.height, "self-loop path and label must fit vertically");
+
+// Render-time normalization is deterministic at each schema boundary and safe
+// for partial OpenUI arrays. Dedupe happens before the cap; links are checked
+// against the retained IDs after the cap.
+const makeFlowNodes = (count) =>
+  Array.from({ length: count }, (_, i) => ({ id: `n${i}`, label: `Node ${i}` }));
+const makeFlowEdges = (count) =>
+  Array.from({ length: count }, () => ({ from: "n0", to: "n1", label: "next" }));
+for (const count of [12, 13]) {
+  const result = normalizeFlow(makeFlowNodes(count), []);
+  assert.equal(result.nodes.length, Math.min(count, 12), `${count} flow nodes normalize to at most 12`);
+  assert.equal(result.omittedNodes, Math.max(0, count - 12), `${count} flow nodes report omissions`);
+}
+for (const count of [24, 25]) {
+  const result = normalizeFlow(makeFlowNodes(12), makeFlowEdges(count));
+  assert.equal(result.edges.length, Math.min(count, 24), `${count} flow edges normalize to at most 24`);
+  assert.equal(result.omittedEdges, Math.max(0, count - 24), `${count} flow edges report omissions`);
+}
+const normalizedFlow = normalizeFlow(
+  [...makeFlowNodes(12), { id: "n0", label: "Duplicate" }, { id: "n12", label: "Over limit" }],
+  [
+    { from: "n0", to: "n0", label: "self" },
+    { from: "n0", to: "missing", label: "dangling" },
+    { from: "n0", to: "n1", label: "kept" },
+  ],
+);
+assert.equal(normalizedFlow.nodes.length, 12, "dedupe then cap flow nodes");
+assert.equal(normalizedFlow.omittedNodes, 2, "duplicate and over-limit nodes are counted");
+assert.deepEqual(normalizedFlow.edges.map((edge) => edge.label), ["kept"], "only retained-node relationships survive");
+assert.equal(normalizedFlow.selfEdges, 1, "flow self-edges are counted");
+assert.equal(normalizedFlow.omittedEdges, 2, "self and dangling edges are counted");
+const partialFlow = normalizeFlow([null, {}, { id: "ok", label: "OK" }], [null, { from: "", to: "ok" }]);
+assert.equal(partialFlow.nodes.length, 1, "partial flow nodes do not crash normalization");
+assert.equal(partialFlow.omittedNodes, 2, "partial flow nodes are counted as omitted");
+assert.equal(partialFlow.omittedEdges, 2, "partial flow edges are counted as omitted");
+
+const makeParticipants = (count) =>
+  Array.from({ length: count }, (_, i) => ({ id: `p${i}`, label: `Participant ${i}` }));
+const makeMessages = (count) =>
+  Array.from({ length: count }, () => ({ from: "p0", to: "p1", label: "request" }));
+for (const count of [6, 7]) {
+  const result = normalizeSequence(makeParticipants(count), []);
+  assert.equal(result.participants.length, Math.min(count, 6), `${count} sequence participants normalize to at most 6`);
+  assert.equal(result.omittedParticipants, Math.max(0, count - 6), `${count} participants report omissions`);
+}
+for (const count of [12, 13]) {
+  const result = normalizeSequence(makeParticipants(6), makeMessages(count));
+  assert.equal(result.messages.length, Math.min(count, 12), `${count} messages normalize to at most 12`);
+  assert.equal(result.omittedMessages, Math.max(0, count - 12), `${count} messages report omissions`);
+}
+const partialSequence = normalizeSequence(
+  [null, { id: "p0", label: "P0" }],
+  [null, { from: "p0", to: "ghost", label: "dangling" }, { from: "p0", to: "p0" }],
+);
+assert.equal(partialSequence.participants.length, 1, "partial sequence participants do not crash normalization");
+assert.equal(partialSequence.omittedParticipants, 1, "partial sequence participants are counted");
+assert.equal(partialSequence.messages.length, 0, "unknown sequence endpoints are omitted");
+assert.equal(partialSequence.omittedMessages, 3, "partial, unlabeled and dangling sequence messages are counted");
+
+for (const count of [12, 13]) {
+  const result = normalizeSteps(Array.from({ length: count }, (_, i) => ({ title: `Step ${i}` })));
+  assert.equal(result.steps.length, Math.min(count, 12), `${count} steps normalize to at most 12`);
+  assert.equal(result.omittedSteps, Math.max(0, count - 12), `${count} steps report omissions`);
+}
+const partialSteps = normalizeSteps([null, {}, { title: "Visible" }]);
+assert.deepEqual(partialSteps.steps, [{ title: "Visible" }], "partial explainer steps are filtered safely");
+assert.equal(partialSteps.omittedSteps, 2, "partial explainer steps are counted");
+
+console.log("test-diagram-layout OK — bounded flow, sequence and explainer normalization plus geometry");

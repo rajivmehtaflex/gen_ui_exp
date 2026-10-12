@@ -3,9 +3,20 @@
 import { useId, useMemo } from "react";
 import { defineComponent } from "@openuidev/react-lang";
 import { z } from "zod/v4";
-import { MessageSchema, ParticipantSchema, type MessageData, type ParticipantData } from "./schemas";
+import {
+  boundedReferenceArray,
+  MessageSchema,
+  ParticipantSchema,
+  type MessageData,
+  type ParticipantData,
+} from "./schemas";
 import { layoutSequence } from "./sequence-layout";
 import { dedupeById } from "./dedupe";
+import {
+  MAX_SEQUENCE_MESSAGES,
+  MAX_SEQUENCE_PARTICIPANTS,
+  normalizeSequence,
+} from "./limits";
 
 export const Participant = defineComponent({
   name: "Participant",
@@ -38,17 +49,59 @@ function SequenceDiagramView({
   messages: MessageData[];
 }) {
   const key = JSON.stringify([participants, messages]);
-  const { kept: uniqueParticipants, duplicates } = useMemo(() => dedupeById(participants), [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  const laid = useMemo(() => layoutSequence(uniqueParticipants, messages), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const duplicateCandidates = participants.filter(
+    (participant) =>
+      participant &&
+      typeof participant.id === "string" &&
+      participant.id.trim() &&
+      typeof participant.label === "string" &&
+      participant.label.trim(),
+  );
+  const { duplicates } = useMemo(() => dedupeById(duplicateCandidates), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const normalized = useMemo(() => normalizeSequence(participants, messages), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const laid = useMemo(() => layoutSequence(normalized.participants, normalized.messages), [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const mFilled = `sq-filled-${uid}`;
   const mOpen = `sq-open-${uid}`;
+  const titleId = `sq-title-${uid}`;
+  const descriptionId = `sq-description-${uid}`;
+  const retainedIds = new Set(normalized.participants.map((participant) => participant.id));
+  const consideredMessages = messages
+    .filter(
+      (message) =>
+        message &&
+        typeof message.from === "string" &&
+        message.from.trim() &&
+        typeof message.to === "string" &&
+        message.to.trim() &&
+        typeof message.label === "string",
+    )
+    .slice(0, MAX_SEQUENCE_MESSAGES);
+  const danglingMessages = consideredMessages.filter(
+    (message) => !retainedIds.has(message.from) || !retainedIds.has(message.to),
+  );
+  const additionalOmittedMessages = Math.max(0, normalized.omittedMessages - danglingMessages.length);
+  const participantDescription = laid.lanes.map((lane) => `${lane.label} (${lane.id})`).join("; ") || "none";
+  const messageDescription =
+    laid.arrows.map((arrow) => `${arrow.from} to ${arrow.to}: ${arrow.fullLabel}`).join("; ") || "none";
+  const warnings = [
+    normalized.omittedParticipants > 0
+      ? `${normalized.omittedParticipants} participant${normalized.omittedParticipants === 1 ? "" : "s"} omitted${duplicates ? ` (${duplicates} duplicate id${duplicates === 1 ? "" : "s"})` : " (incomplete or over limit)"}`
+      : null,
+    danglingMessages.length > 0
+      ? `${danglingMessages.length} message${danglingMessages.length === 1 ? "" : "s"} skipped (unknown participant)`
+      : null,
+    additionalOmittedMessages > 0
+      ? `${additionalOmittedMessages} message${additionalOmittedMessages === 1 ? "" : "s"} omitted (incomplete or over limit)`
+      : null,
+  ].filter(Boolean);
 
   return (
     <div className="gx-diagram" style={{ overflowX: "auto" }}>
       <svg
         role="img"
-        aria-label="Sequence diagram"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
         viewBox={`0 0 ${laid.width} ${laid.height}`}
         width="100%"
         style={{
@@ -59,6 +112,10 @@ function SequenceDiagramView({
         }}
         preserveAspectRatio="xMidYMid meet"
       >
+        <title id={titleId}>Sequence diagram</title>
+        <desc id={descriptionId}>
+          Participants: {participantDescription}. Messages in order: {messageDescription}.
+        </desc>
         <defs>
           <marker id={mFilled} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill={STROKE} />
@@ -85,6 +142,7 @@ function SequenceDiagramView({
         {/* participant header cards */}
         {laid.lanes.map((l) => (
           <g key={l.id}>
+            <title>{l.label}</title>
             <rect
               x={l.x - 62}
               y={12}
@@ -105,34 +163,12 @@ function SequenceDiagramView({
         {laid.arrows.map((a, i) => {
           const dash = a.kind === "return" ? "6 4" : undefined;
           const marker = a.kind === "sync" ? mFilled : mOpen;
-          if (a.selfLoop) {
-            const d = `M ${a.x1} ${a.y} h 30 a 6 6 0 0 1 6 6 v 10 a 6 6 0 0 1 -6 6 h -22`;
-            return (
-              <g key={i}>
-                <path d={d} fill="none" stroke={STROKE} strokeWidth={1.5} strokeDasharray={dash} markerEnd={`url(#${marker})`} />
-                <text
-                  x={a.labelX + 44}
-                  y={a.y + 12}
-                  textAnchor="start"
-                  fontSize={11.5}
-                  fill={TEXT2}
-                  stroke={SURFACE}
-                  strokeWidth={3}
-                  paintOrder="stroke"
-                  fontFamily={FONT}
-                >
-                  {a.label}
-                </text>
-              </g>
-            );
-          }
           return (
-            <g key={i}>
-              <line
-                x1={a.x1}
-                y1={a.y}
-                x2={a.x2}
-                y2={a.y}
+            <g key={`${a.from}->${a.to}-${i}`}>
+              <title>{`${a.from} to ${a.to}: ${a.fullLabel}`}</title>
+              <path
+                d={a.path}
+                fill="none"
                 stroke={STROKE}
                 strokeWidth={1.5}
                 strokeDasharray={dash}
@@ -141,7 +177,7 @@ function SequenceDiagramView({
               <text
                 x={a.labelX}
                 y={a.labelY}
-                textAnchor="middle"
+                textAnchor={a.selfLoop ? "start" : "middle"}
                 fontSize={11.5}
                 fill={TEXT2}
                 stroke={SURFACE}
@@ -155,18 +191,9 @@ function SequenceDiagramView({
           );
         })}
       </svg>
-      {laid.dropped.length > 0 || duplicates > 0 ? (
-        <div style={{ fontSize: 12, color: TEXT2, padding: "4px 2px 0" }}>
-          {[
-            duplicates > 0
-              ? `${duplicates} duplicate participant id${duplicates > 1 ? "s" : ""} skipped`
-              : null,
-            laid.dropped.length > 0
-              ? `${laid.dropped.length} message${laid.dropped.length > 1 ? "s" : ""} skipped (unknown participant)`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
+      {warnings.length > 0 ? (
+        <div role="status" aria-live="polite" style={{ fontSize: 12, color: TEXT2, padding: "4px 2px 0" }}>
+          {warnings.join(" · ")}
         </div>
       ) : null}
     </div>
@@ -178,17 +205,17 @@ export const SequenceDiagram = defineComponent({
   description:
     "Timeline of messages passed between participants over time - lanes left-to-right, messages top-to-bottom. Use Participant references for lanes and Message references for arrows, in chronological order.",
   props: z.object({
-    participants: z.array(Participant.ref),
-    messages: z.array(Message.ref),
+    participants: boundedReferenceArray(Participant.ref, MAX_SEQUENCE_PARTICIPANTS),
+    messages: boundedReferenceArray(Message.ref, MAX_SEQUENCE_MESSAGES),
   }),
-  component: ({ props }) => (
-    <SequenceDiagramView
-      participants={(props.participants ?? [])
-        .filter((el) => el.props?.id && el.props?.label)
-        .map((el) => el.props as ParticipantData)}
-      messages={(props.messages ?? [])
-        .filter((el) => el.props?.from && el.props?.to)
-        .map((el) => el.props as MessageData)}
-    />
-  ),
+  component: ({ props }) => {
+    const participantRefs = Array.isArray(props.participants) ? props.participants : [];
+    const messageRefs = Array.isArray(props.messages) ? props.messages : [];
+    return (
+      <SequenceDiagramView
+        participants={participantRefs.map((el) => (el?.props ?? {}) as ParticipantData)}
+        messages={messageRefs.map((el) => (el?.props ?? {}) as MessageData)}
+      />
+    );
+  },
 });

@@ -3,7 +3,8 @@
 import { defineComponent } from "@openuidev/react-lang";
 import { MarkDownRenderer } from "@openuidev/react-ui";
 import { z } from "zod/v4";
-import { ExplainerStepSchema, type ExplainerStepData } from "./schemas";
+import { boundedReferenceArray, ExplainerStepSchema, type ExplainerStepData } from "./schemas";
+import { MAX_EXPLAINER_STEPS, normalizeSteps } from "./limits";
 
 export const ExplainerStep = defineComponent({
   name: "ExplainerStep",
@@ -13,16 +14,26 @@ export const ExplainerStep = defineComponent({
   component: () => null,
 });
 
-function StepExplainerView({ steps }: { steps: ExplainerStepData[] }) {
+function StepExplainerView({
+  steps,
+  omittedSteps,
+}: {
+  steps: ExplainerStepData[];
+  omittedSteps: number;
+}) {
   return (
     <div className="gx-steps">
-      {steps.map((s, i) =>
-        s?.title ? (
-          <div
+      <ol
+        aria-label="Ordered concept walkthrough"
+        style={{ listStyle: "none", margin: 0, padding: 0 }}
+      >
+        {steps.map((s, i) => (
+          <li
             key={i}
             style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "6px 0" }}
           >
             <div
+              aria-hidden="true"
               style={{
                 flexShrink: 0,
                 width: 28,
@@ -40,9 +51,9 @@ function StepExplainerView({ steps }: { steps: ExplainerStepData[] }) {
               {i + 1}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--openui-text-neutral-primary, #1f2328)" }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--openui-text-neutral-primary, #1f2328)" }}>
                 {s.title}
-              </div>
+              </h3>
               {s.body ? (
                 <div style={{ fontSize: 13.5, color: "var(--openui-text-neutral-secondary, #57606a)" }}>
                   <MarkDownRenderer textMarkdown={s.body} variant="clear" />
@@ -79,9 +90,14 @@ function StepExplainerView({ steps }: { steps: ExplainerStepData[] }) {
                 </div>
               ) : null}
             </div>
-          </div>
-        ) : null,
-      )}
+          </li>
+        ))}
+      </ol>
+      {omittedSteps > 0 ? (
+        <div role="status" aria-live="polite" style={{ fontSize: 12, color: "var(--openui-text-neutral-secondary, #57606a)" }}>
+          {omittedSteps} incomplete or over-limit explainer step{omittedSteps === 1 ? "" : "s"} omitted
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -91,13 +107,11 @@ export const StepExplainer = defineComponent({
   description:
     'Ordered concept walkthrough - explains how something works, one ExplainerStep at a time. Use it for "how does X work" explanations; use Steps for sequential task/UI instructions instead.',
   props: z.object({
-    steps: z.array(ExplainerStep.ref),
+    steps: boundedReferenceArray(ExplainerStep.ref, MAX_EXPLAINER_STEPS),
   }),
-  component: ({ props }) => (
-    <StepExplainerView
-      steps={(props.steps ?? [])
-        .filter((el) => el.props?.title)
-        .map((el) => el.props as ExplainerStepData)}
-    />
-  ),
+  component: ({ props }) => {
+    const stepRefs = Array.isArray(props.steps) ? props.steps : [];
+    const { steps, omittedSteps } = normalizeSteps(stepRefs.map((el) => el?.props ?? {}));
+    return <StepExplainerView steps={steps} omittedSteps={omittedSteps} />;
+  },
 });

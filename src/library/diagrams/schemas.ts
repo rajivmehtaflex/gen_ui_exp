@@ -4,6 +4,11 @@
 // distinctive props first, optional last.
 import { z } from "zod/v4";
 
+/** Apply an authoring bound to an OpenUI child-reference array. */
+export function boundedReferenceArray<T extends z.core.SomeType>(reference: T, maxItems: number) {
+  return z.array(reference).max(maxItems);
+}
+
 // ── Flow family ──
 export const FlowNodeKind = z.enum(["process", "start", "end", "decision", "input", "store"]);
 

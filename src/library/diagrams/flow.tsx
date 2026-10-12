@@ -3,9 +3,16 @@
 import { useId, useMemo } from "react";
 import { defineComponent } from "@openuidev/react-lang";
 import { z } from "zod/v4";
-import { FlowEdgeSchema, FlowNodeSchema, type FlowEdgeData, type FlowNodeData } from "./schemas";
+import {
+  boundedReferenceArray,
+  FlowEdgeSchema,
+  FlowNodeSchema,
+  type FlowEdgeData,
+  type FlowNodeData,
+} from "./schemas";
 import { layoutFlow, pointsToPath, wrapLabel } from "./flow-layout";
 import { dedupeById } from "./dedupe";
+import { MAX_FLOW_EDGES, MAX_FLOW_NODES, normalizeFlow } from "./limits";
 
 export const FlowNode = defineComponent({
   name: "FlowNode",
@@ -47,15 +54,45 @@ function FlowDiagramView({
   direction?: "TB" | "LR";
 }) {
   const key = JSON.stringify([nodes, edges, direction]);
-  const { kept: uniqueNodes, duplicates } = useMemo(() => dedupeById(nodes), [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  const laid = useMemo(() => layoutFlow(uniqueNodes, edges, direction ?? "TB"), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const duplicateCandidates = nodes.filter((node) => node && typeof node.id === "string" && node.id.trim() && typeof node.label === "string" && node.label.trim());
+  const { duplicates } = useMemo(() => dedupeById(duplicateCandidates), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const normalized = useMemo(() => normalizeFlow(nodes, edges), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const laid = useMemo(() => layoutFlow(normalized.nodes, normalized.edges, direction ?? "TB"), [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const markerId = `fd-arrow-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const titleId = `${markerId}-title`;
+  const descriptionId = `${markerId}-description`;
+  const retainedIds = new Set(normalized.nodes.map((node) => node.id));
+  const consideredEdges = edges
+    .filter((edge) => edge && typeof edge.from === "string" && edge.from.trim() && typeof edge.to === "string" && edge.to.trim())
+    .slice(0, MAX_FLOW_EDGES);
+  const danglingEdges = consideredEdges.filter(
+    (edge) => edge.from !== edge.to && (!retainedIds.has(edge.from) || !retainedIds.has(edge.to)),
+  );
+  const additionalOmittedEdges = Math.max(0, normalized.omittedEdges - normalized.selfEdges - danglingEdges.length);
+  const nodeDescription = laid.nodes.map((node) => `${node.label} (${node.id})`).join("; ") || "none";
+  const edgeDescription =
+    laid.edges.map((edge) => `${edge.from} to ${edge.to}${edge.label ? `: ${edge.label}` : ""}`).join("; ") || "none";
+  const warnings = [
+    normalized.omittedNodes > 0
+      ? `${normalized.omittedNodes} node${normalized.omittedNodes === 1 ? "" : "s"} omitted${duplicates ? ` (${duplicates} duplicate id${duplicates === 1 ? "" : "s"})` : " (incomplete or over limit)"}`
+      : null,
+    normalized.selfEdges > 0
+      ? `${normalized.selfEdges} self-edge${normalized.selfEdges === 1 ? "" : "s"} skipped`
+      : null,
+    danglingEdges.length > 0
+      ? `${danglingEdges.length} connection${danglingEdges.length === 1 ? "" : "s"} skipped (unknown node ${danglingEdges.map((edge) => `"${edge.from}"→"${edge.to}"`).join(", ")})`
+      : null,
+    additionalOmittedEdges > 0
+      ? `${additionalOmittedEdges} connection${additionalOmittedEdges === 1 ? "" : "s"} omitted (incomplete or over limit)`
+      : null,
+  ].filter(Boolean);
 
   return (
     <div className="gx-diagram" style={{ overflowX: "auto" }}>
       <svg
         role="img"
-        aria-label="Flow diagram"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
         viewBox={`0 0 ${laid.width} ${laid.height}`}
         width="100%"
         style={{
@@ -68,6 +105,10 @@ function FlowDiagramView({
         }}
         preserveAspectRatio="xMidYMid meet"
       >
+        <title id={titleId}>Flow diagram</title>
+        <desc id={descriptionId}>
+          Nodes: {nodeDescription}. Connections: {edgeDescription}.
+        </desc>
         <defs>
           <marker
             id={markerId}
@@ -84,6 +125,7 @@ function FlowDiagramView({
 
         {laid.edges.map((e, i) => (
           <g key={`${e.from}->${e.to}-${i}`}>
+            <title>{`${e.from} to ${e.to}${e.label ? `: ${e.label}` : ""}`}</title>
             <path
               d={pointsToPath(e.points)}
               fill="none"
@@ -120,6 +162,7 @@ function FlowDiagramView({
           const startY = n.height / 2 - ((lines.length - 1) * 16) / 2 + 4;
           return (
             <g key={n.id} transform={`translate(${n.x - n.width / 2}, ${n.y - n.height / 2})`}>
+              <title>{n.label}</title>
               <rect width={n.width} height={n.height} rx={10} fill={SURFACE} stroke={color} strokeWidth={1.5} />
               <rect x={1} y={6} width={4} height={n.height - 12} rx={2} fill={color} />
               {lines.map((line, li) => (
@@ -139,24 +182,17 @@ function FlowDiagramView({
           );
         })}
       </svg>
-      {laid.dropped.length > 0 || duplicates > 0 ? (
+      {warnings.length > 0 ? (
         <div
+          role="status"
+          aria-live="polite"
           style={{
             fontSize: 12,
             color: TEXT2,
             padding: "4px 2px 0",
           }}
         >
-          {[
-            duplicates > 0
-              ? `${duplicates} duplicate node id${duplicates > 1 ? "s" : ""} skipped`
-              : null,
-            laid.dropped.length > 0
-              ? `${laid.dropped.length} connection${laid.dropped.length > 1 ? "s" : ""} skipped (unknown node ${laid.dropped.map((d) => `"${d.from}"→"${d.to}"`).join(", ")})`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
+          {warnings.join(" · ")}
         </div>
       ) : null}
     </div>
@@ -168,19 +204,19 @@ export const FlowDiagram = defineComponent({
   description:
     'Directed diagram for workflows, architectures, dataflows and lifecycles - laid out automatically as a clean SVG. Use FlowNode references for nodes and FlowEdge references for arrows. direction: "TB" (top-to-bottom, default) or "LR" (left-to-right pipelines).',
   props: z.object({
-    nodes: z.array(FlowNode.ref),
-    edges: z.array(FlowEdge.ref),
+    nodes: boundedReferenceArray(FlowNode.ref, MAX_FLOW_NODES),
+    edges: boundedReferenceArray(FlowEdge.ref, MAX_FLOW_EDGES),
     direction: z.enum(["TB", "LR"]).optional(),
   }),
-  component: ({ props }) => (
-    <FlowDiagramView
-      nodes={(props.nodes ?? [])
-        .filter((el) => el.props?.id && el.props?.label)
-        .map((el) => el.props as FlowNodeData)}
-      edges={(props.edges ?? [])
-        .filter((el) => el.props?.from && el.props?.to)
-        .map((el) => el.props as FlowEdgeData)}
-      direction={props.direction}
-    />
-  ),
+  component: ({ props }) => {
+    const nodeRefs = Array.isArray(props.nodes) ? props.nodes : [];
+    const edgeRefs = Array.isArray(props.edges) ? props.edges : [];
+    return (
+      <FlowDiagramView
+        nodes={nodeRefs.map((el) => (el?.props ?? {}) as FlowNodeData)}
+        edges={edgeRefs.map((el) => (el?.props ?? {}) as FlowEdgeData)}
+        direction={props.direction}
+      />
+    );
+  },
 });
