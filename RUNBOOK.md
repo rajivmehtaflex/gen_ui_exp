@@ -68,6 +68,34 @@ No key? Canned mode routes diagram-ish prompts to validated showcase recipes.
 baseline was 2/3 on one prompt — the canonical examples + rules measurably helped.
 Re-measure after any library/prompt change; never judge from a single run.
 
+## Interactive Diagram Artifacts (Stage 2)
+
+When an ask calls for a rich, explorable diagram (pan/zoom, relationship tracing, export), the system generates standalone interactive HTML via the vendored `diagramify` runtime and serves it into `AgentInterface`'s artifact panel in a sandboxed iframe.
+
+### The 6 supported types
+- `architecture`: system components, boundaries, services, deployments
+- `workflow`: business processes, human-in-the-loop flows, multi-stage procedures
+- `sequence`: request lifecycles, protocol handshakes, distributed messaging
+- `dataflow`: data transformations, pipelines, ETL stages, ingestion
+- `lifecycle`: entity states, state transitions, domain object phases
+- `explainer-steps`: multi-step conceptual walkthroughs, technical mechanics
+
+### Try it
+- Live prompt: *"Diagram our deploy pipeline as an interactive architecture map"*
+- Canned prompt: *"build an interactive diagram of a deploy pipeline"* (or any prompt matching `/interactive|explorable/`) — routes to the real validate+deliver tool pipeline keylessly.
+
+### Verification gates & Smoke testing
+1. `npm run check:diagram` — runs showcase validation across all 7 fixtures under `server/examples/diagrams/`.
+2. `node scripts/live-diagram-smoke.mjs [baseUrl] ["prompt"] [runs]` — end-to-end smoke test sending the prompt, asserting tool call creation, delivery, and artifact retrieval (`GET /api/artifacts/:id` -> 200 `text/html`).
+
+**Live baseline (2026-10-12, `nvidia/nemotron-3-super-120b-a12b:free` via OpenRouter, 3 runs):**
+`toolCalls 3/3 · artifactsOK 3/3` (100% clean passes, artifact HTML size ~716 kB).
+
+### Stage 2 Troubleshooting
+- **Model validation failures**: if the model produces an invalid spec, the server relays the exact diagnostics JSON back to the model for up to 2 self-correction retries before honestly reporting the error.
+- **Missing / 404 artifacts on reload**: the artifact registry is an in-memory `Map` by design (matching in-memory chat threads). Stale artifacts disappear on server restart.
+- **Client disconnect / abort**: if a user navigates away or disconnects mid-deliver, the server terminates child `diagramify` subprocesses immediately to prevent orphaned processes.
+
 ## Scripts
 
 | Command | What it does |
@@ -77,6 +105,7 @@ Re-measure after any library/prompt change; never judge from a single run.
 | `npm run gen:spec` | re-serialize the library (via tsx) → `generated/chat-library.spec.json`. **Run this whenever you touch `src/library/`** — prompt and renderer must stay in sync |
 | `npm run check:spec` | exit 1 if the committed spec is stale vs the library (spec-sync gate) |
 | `npm run check:recipe` | parse ALL canned recipes against the real schema; 0 errors required |
+| `npm run check:diagram` | validate all 7 fixture specs against showcase quality using vendored diagramify |
 | `npm run check:examples` | parse every prompt example against the real schema; 0 errors required |
 | `npm run test:library` | library contract: 84 built-ins + 8 diagram components, exact signatures, parser gates |
 | `npm run test:layout` | diagram layout math: finite/in-bounds/deterministic, dangling refs dropped |
