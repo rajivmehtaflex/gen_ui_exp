@@ -3,7 +3,8 @@
 // no test framework, in-process express server on an ephemeral port.
 // Run: node scripts/test-diagram-tool.mjs
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 import express from "express";
 import { createArtifactStore } from "../server/artifact-store.mjs";
 
@@ -81,6 +82,14 @@ await check("valid spec executes, registers the artifact, and serves as HTML", a
     const body = await res.text();
     assert.equal(body, artifact.html, "served body must be the registered html");
     assert.match(body, /<!doctype html|<html/i);
+
+    // The receipt must describe the delivered bytes themselves.
+    const servedDigest = createHash("sha256").update(body, "utf8").digest("hex");
+    assert.match(result.sha256, /^[0-9a-f]{64}$/, "receipt must carry a full lowercase hex sha256");
+    assert.equal(result.sha256, servedDigest, "receipt sha256 must hash the served bytes");
+    assert.equal(result.sha256, artifact.hash, "registry hash and receipt sha256 must agree");
+    assert.equal(result.bytes, Buffer.byteLength(body, "utf8"), "receipt bytes must be the served UTF-8 byte length");
+    assert.equal(result.bytes, artifact.bytes, "registry bytes and receipt bytes must agree");
   } finally {
     server.close();
   }
@@ -170,6 +179,47 @@ await check("a spec the CLI rejects resolves ok:false with parsed diagnostics", 
   assert.equal(result.ok, false);
   assert.match(result.error, /schema/i, `error should surface the CLI's message, got: ${JSON.stringify(result.error)}`);
   assert.ok(Array.isArray(result.diagnostics) && result.diagnostics.length > 0, "diagnostics must carry the receipt's list");
+});
+
+// A runner standing in for the vendored CLI: writes the artifact, then reports
+// whatever receipt the check needs. Lets the receipt contract be exercised
+// without spawning a subprocess.
+function fakeRunner(receiptForDelivery) {
+  return async ({ args }) => {
+    if (args[1] === "deliver") {
+      const html = "<!doctype html><title>fixture</title>";
+      writeFileSync(args[4], html);
+      return { ok: true, stdout: JSON.stringify({ ok: true, ...receiptForDelivery(html) }), stderr: "" };
+    }
+    return { ok: true, stdout: JSON.stringify({ ok: true }), stderr: "" };
+  };
+}
+
+await check("a vendor receipt digest that disagrees with the delivered bytes fails the delivery", async () => {
+  const wrongDigest = createHash("sha256").update("not the delivered html", "utf8").digest("hex");
+  const result = await executeDiagramTool(
+    JSON.stringify({ title: "Fixture", type: "architecture", spec: { nodes: [] } }),
+    null,
+    { runner: fakeRunner(() => ({ artifact: { sha256: wrongDigest } })) },
+  );
+  assert.equal(result.ok, false, `a lying receipt must fail: ${JSON.stringify(result)}`);
+  assert.match(result.error, /digest mismatch/i);
+  assert.equal(result.diagramId, undefined, "a failed digest cross-check must not register an artifact");
+});
+
+await check("a receipt without an artifact digest falls back to the computed digest", async () => {
+  const result = await executeDiagramTool(
+    JSON.stringify({ title: "Fixture", type: "architecture", spec: { nodes: [] } }),
+    null,
+    { runner: fakeRunner(() => ({})) },
+  );
+  assert.equal(result.ok, true, `expected ok:true, got: ${JSON.stringify(result)}`);
+  assert.equal(
+    result.sha256,
+    createHash("sha256").update("<!doctype html><title>fixture</title>", "utf8").digest("hex"),
+    "the computed digest must describe the delivered bytes",
+  );
+  assert.equal(result.bytes, Buffer.byteLength("<!doctype html><title>fixture</title>", "utf8"));
 });
 
 await check("unknown artifact id returns a JSON 404", async () => {

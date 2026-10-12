@@ -5,6 +5,7 @@
 // vendored CLI, so nothing here spawns processes or touches the network.
 // Run: node scripts/test-resource-limits.mjs
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { getEventListeners } from "node:events";
 import { writeFileSync } from "node:fs";
 
@@ -210,8 +211,15 @@ function fakeRunner(behavior = "ok") {
       };
     }
     if (command === "deliver") {
-      writeFileSync(args[4], "<!doctype html><title>fixture</title>");
-      return { ok: true, stdout: JSON.stringify({ ok: true, artifact: { sha256: "f".repeat(64) } }), stderr: "" };
+      // The receipt must tell the truth about the bytes it delivered — the
+      // tool cross-checks this digest against the artifact it reads back.
+      const html = "<!doctype html><title>fixture</title>";
+      writeFileSync(args[4], html);
+      return {
+        ok: true,
+        stdout: JSON.stringify({ ok: true, artifact: { sha256: createHash("sha256").update(html, "utf8").digest("hex") } }),
+        stderr: "",
+      };
     }
     return { ok: true, stdout: JSON.stringify({ ok: true }), stderr: "" };
   }

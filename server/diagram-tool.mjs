@@ -285,16 +285,29 @@ export async function executeDiagramTool(rawArgs, signal = null,
     if (!delivered.ok) return { ok: false, error: delivered.error, diagnostics: delivered.diagnostics };
 
     const html = readFileSync(htmlPath, "utf8");
+    // The receipt must describe the bytes that were actually delivered, not
+    // trust the subprocess's word for them: hash the html we read back, and
+    // refuse the delivery when the vendor receipt disagrees with those bytes.
+    const bytes = Buffer.byteLength(html, "utf8");
+    const sha256 = createHash("sha256").update(html, "utf8").digest("hex");
+    const receiptSha256 = delivered.receipt?.artifact?.sha256;
+    if (typeof receiptSha256 === "string" && receiptSha256.length > 0 && receiptSha256 !== sha256) {
+      return {
+        ok: false,
+        error: `delivered artifact digest mismatch: the diagramify receipt says ${receiptSha256} but the delivered html hashes to ${sha256}`,
+        diagnostics: [],
+      };
+    }
     const artifact = {
       title: args.title,
       type: args.type,
       html,
-      hash: delivered.receipt?.artifact?.sha256 || createHash("sha256").update(html).digest("hex"),
+      hash: sha256,
     };
     const diagramId = randomUUID();
     const stored = artifactRegistry.put(diagramId, artifact);
     if (!stored.ok) return { ok: false, error: stored.error, diagnostics: [] };
-    return { ok: true, diagramId, title: artifact.title, type: artifact.type };
+    return { ok: true, diagramId, title: artifact.title, type: artifact.type, sha256, bytes };
   } catch (err) {
     // The contract is "never throws": a filesystem hiccup (temp dir, spec
     // write, artifact read) is still a failed tool call for the model to retry.
