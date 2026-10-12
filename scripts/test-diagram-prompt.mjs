@@ -101,9 +101,11 @@ try {
     const mutations = [
       ["architecture", (s) => { s.components = []; }],
       ["workflow", (s) => { s.lanes = []; }],
+      ["workflow", (s) => { s.nodes = []; }],
       ["sequence", (s) => { s.participants.pop(); }],
       ["sequence", (s) => { s.messages = []; }],
       ["dataflow", (s) => { s.stages.pop(); }],
+      ["dataflow", (s) => { s.nodes = [s.nodes[0]]; }],
       ["lifecycle", (s) => { s.states.pop(); }],
       ["explainer-steps", (s) => { s.steps.pop(); }],
       ["explainer-steps", (s) => { s.steps[0].label = "x".repeat(61); }],

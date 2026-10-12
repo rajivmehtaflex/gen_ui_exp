@@ -15,9 +15,9 @@ export function diagramModeForPrompt(prompt) {
   const family = /\b(?:architectures?|data[ -]?flows?|sequences?|workflows?|lifecycles?|pipelines?|(?:step[ -]?)?explainer(?:[ -]?steps)?)\b/;
   const namedDiagram = /\b(?:diagrams?|flowcharts?)\b/.test(text);
   const outputVerb = /\b(?:draw|sketch|show|create|make|build|generate|render|visualize|map|design)\b/.test(text);
-  const inlineTarget = new RegExp(`\\binline\\s+(?:(?:an?|the|interactive|explorable)\\s+)?${qualifiedDiagramTarget}\\b|\\b${diagramTarget}\\s+inline\\b`).test(text);
+  const inlineTarget = new RegExp(`\\binline\\s+(?:(?:an?|the|interactive|explorable)\\s+)?${qualifiedDiagramTarget}\\b|\\b${diagramTarget}\\s+inline\\b|\\binline\\s+(?:artifacts?\\s+of\\s+)(?:(?:an?|the)\\s+)?${diagramTarget}(?:\\s+diagrams?)?\\b`).test(text);
   const interactiveTarget = new RegExp(`\\b(?:interactive|explorable|diagramify)\\s+(?:(?:an?|the)\\s+)?${qualifiedDiagramTarget}\\b|\\b(?:diagrams?|flowcharts?)\\s+(?:that is\\s+|which is\\s+)?(?:interactive|explorable)\\b`).test(text);
-  const artifactTarget = new RegExp(`\\b(?:artifacts?\\s+${diagramTarget}|${diagramTarget}\\s+artifacts?|${diagramTarget}\\s+as\\s+(?:an?\\s+)?(?:interactive\\s+)?artifacts?)\\b`).test(text);
+  const artifactTarget = new RegExp(`\\b(?:artifacts?\\s+${diagramTarget}|artifacts?\\s+of\\s+(?:(?:an?|the)\\s+)?${diagramTarget}(?:\\s+diagrams?)?|${diagramTarget}\\s+artifacts?|${diagramTarget}\\s+as\\s+(?:an?\\s+)?(?:interactive\\s+)?artifacts?)\\b`).test(text);
   const bareDiagramRequest = new RegExp(`^\\s*(?:an?\\s+)?(?:inline|interactive|explorable|diagramify)\\s+(?:(?:an?|the)\\s+)?${qualifiedDiagramTarget}\\b`).test(text);
   const asksForOutput = outputVerb || /\b(?:i want|i need|give me|with an? (?:inline|interactive|explorable))\b/.test(text) || bareDiagramRequest;
   const diagramIntent = asksForOutput && (namedDiagram || inlineTarget || interactiveTarget || artifactTarget || family.test(text));
