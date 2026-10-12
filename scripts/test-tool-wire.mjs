@@ -188,6 +188,34 @@ await check("transport_failure_settles_and_propagates", async () => {
   assert.equal(events.some((e) => e.type === "RUN_ERROR"), false, "transport handler owns the error");
   assert.equal(stream.locked, false);
 });
+await check("malformed_tool_delta_settles_and_propagates", async () => {
+  const stream = new ReadableStream({ start(controller) {
+    controller.enqueue(new TextEncoder().encode(
+      frame({ role: "assistant", content: "Partial", tool_calls: [{ index: 0, id: "started", function: { name: "create_diagram" } }] }) +
+      frame({ tool_calls: {} }) + doneFrame,
+    ));
+  } });
+  const events = [];
+  await assert.rejects(async () => {
+    for await (const event of chatAdapter().parse(new Response(stream))) events.push(event);
+  }, TypeError, "event-processing failures must propagate");
+  balanced(events);
+  assert.equal(events.some((event) => event.type === "RUN_ERROR"), false, "processing failure must not be reported as malformed JSON");
+  assert.equal(stream.locked, false, "processing failure must release the reader");
+});
+await check("cancel_rejection_after_done_releases_reader", async () => {
+  let cancellations = 0;
+  const stream = new ReadableStream({ start(controller) {
+    controller.enqueue(new TextEncoder().encode(frame({ content: "Complete" }) + doneFrame));
+  }, cancel() {
+    cancellations++;
+    return Promise.reject(new Error("cancel failed"));
+  } });
+  const events = await parse(new Response(stream));
+  balanced(events);
+  assert.equal(cancellations, 1);
+  assert.equal(stream.locked, false, "terminal completion must release the reader even if cancel rejects");
+});
 await check("sdk_segments_and_tool_execution", async () => {
   // The browser SDK batches updates using animation frames; use real timers here.
   const originalRequest = globalThis.requestAnimationFrame;

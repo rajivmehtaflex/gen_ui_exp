@@ -58,14 +58,7 @@ export function chatAdapter(): StreamProtocolAdapter {
 
       try {
         while (true) {
-          // Only read failures propagate to the SDK's transport-error handler.
-          let read: ReadableStreamReadResult<Uint8Array>;
-          try {
-            read = await reader.read();
-          } catch (error) {
-            yield* closeRound();
-            throw error;
-          }
+          const read = await reader.read();
           exhausted = read.done;
           buffer += read.done ? decoder.decode() : decoder.decode(read.value, { stream: true });
 
@@ -164,10 +157,17 @@ export function chatAdapter(): StreamProtocolAdapter {
             return;
           }
         }
+      } catch (error) {
+        // Keep processing and transport failures visible to the SDK after
+        // settling any events already emitted by this adapter.
+        yield* closeRound();
+        throw error;
       } finally {
         // A terminal frame or consumer return leaves unread bytes to cancel.
         try {
           if (!exhausted) await reader.cancel();
+        } catch {
+          // Cancellation is cleanup and must not replace the stream outcome.
         } finally {
           reader.releaseLock();
         }
