@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Phase #1 hello-world self-hosted Generative UI app: AgentInterface + openuiChatLibrary + OpenRouter",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "concurrently -n server,web -c blue,green \"npm run dev:server\" \"npm run dev:web\"",
     "dev:server": "node --env-file=.env --watch server/chat.mjs",
@@ -16,11 +19,27 @@
     "check:diagram": "node scripts/check-diagram.mjs",
     "check:examples": "node scripts/validate-examples.mjs",
     "test:library": "tsx scripts/test-library.mjs",
-    "test:layout": "tsx scripts/test-diagram-layout.mjs"
+    "test:layout": "tsx scripts/test-diagram-layout.mjs",
+    "test:tool": "node scripts/test-diagram-tool.mjs",
+    "test:wire": "./node_modules/.bin/tsx scripts/test-tool-wire.mjs",
+    "test:artifact": "./node_modules/.bin/tsx scripts/test-artifact-renderer.mjs",
+    "test:input": "node scripts/test-chat-input.mjs",
+    "test:loop": "node scripts/test-chat-loop.mjs",
+    "test:process": "node scripts/test-process-runner.mjs",
+    "test:store": "node scripts/test-artifact-store.mjs",
+    "test:resource": "node scripts/test-resource-limits.mjs",
+    "test:prompt": "node scripts/test-diagram-prompt.mjs",
+    "test:routing": "node scripts/test-diagram-policy.mjs",
+    "test:smoke-gates": "node scripts/test-smoke-gates.mjs",
+    "test:error": "node scripts/test-error-visibility.mjs",
+    "test:harness": "node scripts/test-harness.mjs",
+    "test:browser": "node scripts/test-artifact-panel.mjs && node scripts/test-artifact-isolation.mjs && ./node_modules/.bin/tsx scripts/test-diagram-render.mjs",
+    "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@openuidev/lang-core": "^0.3.0",
+    "@openuidev/react-headless": "^0.16.3",
     "@openuidev/react-lang": "^0.3.0",
     "@openuidev/react-ui": "^0.16.3",
     "ajv": "^8.17.1",

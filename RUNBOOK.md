@@ -109,6 +109,9 @@ When an ask calls for a rich, explorable diagram (pan/zoom, relationship tracing
 | `npm run check:examples` | parse every prompt example against the real schema; 0 errors required |
 | `npm run test:library` | library contract: 84 built-ins + 8 diagram components, exact signatures, parser gates |
 | `npm run test:layout` | diagram layout math: finite/in-bounds/deterministic, dangling refs dropped |
+| `npm run verify` | the whole offline gate in one sequential run: every check below (plus tool/wire/artifact/input/loop/process/store/resource/prompt/routing/smoke-gates/harness/error), then the keyless canned smoke pair + flow render gate against a harness-started server, then the build. Stops at the first failing check; clears `OPENROUTER_*` env for every child, so it can never run a paid live smoke |
+| `npm run test:browser` | the three Playwright checks (artifact panel, artifact isolation, diagram render geometry). **Needs a browser**: install Chromium once with `npx playwright install chromium` (pinned `playwright` devDependency). Deliberately NOT part of `npm run verify`; CI has a dedicated job that installs Chromium first |
+| `node scripts/test-harness.mjs` | the hermetic test-server harness itself: `startTestServer` (isolated port, provider env cleared, readiness proved to belong to its child) plus its behavioral checks (parent env cannot change mode, occupied port is never adopted, child exit is reported with drained output, stop releases the port) |
 
 **The regeneration loop:** edit `src/library/` → `npm run gen:spec` → the dev
 server restarts on the changed spec (`--watch`) → Vite hot-reloads the client.

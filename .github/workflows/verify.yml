@@ -1,0 +1,63 @@
+# Hermetic verification for gen_ui_exp.
+#
+# Offline gates: clean `npm ci` plus `npm run verify` — every offline check
+# (spec/recipe/examples/diagram/library/layout/tool/wire/artifact/input/loop/
+# process/store/resource/prompt/routing/smoke-gates/harness/error), the keyless
+# canned smoke pair and render gate, and the client build — on both supported
+# Node versions (>=20 per package.json engines). No provider key is needed or
+# used anywhere in this workflow.
+#
+# Browser job: `npm run test:browser` drives Playwright, so its Chromium must
+# be installed first (`npx playwright install chromium`, resolving the pinned
+# playwright devDependency). That install is an explicit, tracked requirement:
+# browser checks are never reported as passing on a machine without it, and
+# `npm run verify` deliberately excludes browser checks.
+name: verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    name: offline gates (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Clean install
+        run: npm ci
+      - name: Offline verify (stops at first failing check)
+        run: npm run verify
+
+  browser:
+    name: browser checks (chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Clean install
+        run: npm ci
+      - name: Install pinned Playwright Chromium
+        run: npx playwright install chromium
+      - name: Offline verify
+        run: npm run verify
+      - name: Browser checks (artifact panel, isolation, render geometry)
+        run: npm run test:browser

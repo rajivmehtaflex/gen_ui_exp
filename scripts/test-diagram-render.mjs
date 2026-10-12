@@ -1,6 +1,10 @@
 // Render-geometry tests — the layer the parser and layout gates cannot see.
 // Render the real component and assert labels sit INSIDE their boxes and the
-// SVG cannot upscale without bound. Run: npx tsx scripts/test-diagram-render.mjs
+// SVG cannot upscale without bound. Imports TS diagram components, so this
+// needs tsx; it also drives a real Chromium via the pinned Playwright
+// dependency, so it runs with `npm run test:browser` (CI installs Chromium
+// for that job) and is deliberately NOT part of `npm run verify`.
+// Run: ./node_modules/.bin/tsx scripts/test-diagram-render.mjs
 import assert from "node:assert/strict";
 import React from "react";
 import { renderToString } from "react-dom/server";

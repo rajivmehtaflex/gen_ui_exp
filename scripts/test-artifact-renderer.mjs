@@ -1,6 +1,8 @@
 // Tests for Task 7: Artifact renderer contract tests.
-// Plain node / tsx, renderToString from react-dom/server.
-// Run: npx tsx scripts/test-artifact-renderer.mjs
+// Plain node / tsx, renderToString from react-dom/server. Imports the .tsx
+// renderer, so this check needs tsx — plain node fails with
+// ERR_UNKNOWN_FILE_EXTENSION on any supported Node (npm run test:artifact).
+// Run: ./node_modules/.bin/tsx scripts/test-artifact-renderer.mjs
 import assert from "node:assert/strict";
 import React from "react";
 import { renderToString } from "react-dom/server";
