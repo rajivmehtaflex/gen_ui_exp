@@ -16,6 +16,8 @@ const cases = [
   ["Draw an inline flow", "inline"],
   ["Explain caching with an inline step explainer", "inline"],
   ["INLINE workflow diagram with interactive details", "inline"],
+  ["Create an inline artifact diagram", "inline"],
+  ["Show an inline artifact architecture diagram", "inline"],
   ["Show an interactive architecture diagram", "interactive"],
   ["Show an interactive workflow diagram with inline labels", "interactive"],
   ["Create an interactive architecture diagram with inline code examples", "interactive"],
