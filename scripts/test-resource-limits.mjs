@@ -15,7 +15,7 @@ const diagramTool = await import("../server/diagram-tool.mjs").catch(() => ({}))
 const { createDiagramLimiter, createRequestDeadline, createStreamBudget } = limits;
 const { createSseWriter } = sseModule;
 const { runToolLoop } = toolLoop;
-const { executeDiagramTool, diagramJobLimiter } = diagramTool;
+const { executeDiagramTool, diagramJobLimiter, toolResultChunk } = diagramTool;
 
 let failures = 0;
 async function check(name, fn) {
@@ -320,6 +320,55 @@ await check("invalid_arguments_release_slots", async () => {
   assert.deepEqual(runner.commands, [], "refused arguments must not spawn");
   const good = await executeDiagramTool(fixtureArgs, null, { limiter, runner: runner.run });
   assert.equal(good.ok, true, "slots must survive invalid-argument calls");
+});
+
+await check("failure_frames_cannot_exceed_pending_budget", async () => {
+  // The largest text the CLI output caps allow a failure to carry.
+  const big = "e".repeat(900_000);
+  const diagnostics = [
+    { code: "schema/too-large", severity: "error", message: `message ${big}`, evidence: { blob: big } },
+    { code: "schema/small", severity: "warning", message: "small but real", subject: { nodeId: "n1" } },
+    ...Array.from({ length: 40 }, (_, index) => ({ code: `x${index}`, message: `extra ${big}` })),
+  ];
+  const limiter = createDiagramLimiter(2);
+  const suffix = "... [truncated]".length;
+  const failingRunner = async ({ args }) => {
+    if (args[1] === "validate") return { ok: true, stdout: JSON.stringify({ ok: true }), stderr: "" };
+    return {
+      ok: false,
+      stdout: JSON.stringify({ ok: false, error: `receipt ${big}`, diagnostics }),
+      stderr: `stderr ${big}`,
+    };
+  };
+  const receiptFailure = await executeDiagramTool(fixtureArgs, null, { limiter, runner: failingRunner });
+  assert.equal(receiptFailure.ok, false);
+  assert.match(receiptFailure.error, /^receipt /, "the receipt error must still lead the message");
+  assert.match(receiptFailure.error, /truncated/, "clamped text must say it was truncated");
+  assert.ok(receiptFailure.error.length <= limits.MAX_TOOL_ERROR_CHARS + suffix,
+    `error clamped to ${receiptFailure.error.length} chars`);
+  assert.ok(receiptFailure.diagnostics.length <= limits.MAX_DIAGNOSTIC_ENTRIES + 1,
+    `${receiptFailure.diagnostics.length} diagnostic entries survived`);
+  for (const entry of receiptFailure.diagnostics) {
+    const text = typeof entry === "string" ? entry : String(entry?.message ?? "");
+    assert.ok(text.length <= limits.MAX_DIAGNOSTIC_CHARS + suffix,
+      `a diagnostic text survived at ${text.length} chars: ${text.slice(0, 80)}`);
+  }
+
+  const stderrRunner = async ({ args }) => (args[1] === "validate"
+    ? { ok: true, stdout: JSON.stringify({ ok: true }), stderr: "" }
+    : { ok: false, stdout: JSON.stringify({ ok: true }), stderr: `stderr ${big}` });
+  const stderrFailure = await executeDiagramTool(fixtureArgs, null, { limiter, runner: stderrRunner });
+  assert.equal(stderrFailure.ok, false);
+  assert.match(stderrFailure.error, /^stderr /);
+  assert.ok(stderrFailure.error.length <= limits.MAX_TOOL_ERROR_CHARS + suffix);
+
+  // The frame chat.mjs actually queues for such a failure must fit the pending
+  // SSE budget, so no single frame can bypass the cap.
+  for (const result of [receiptFailure, stderrFailure]) {
+    const frame = toolResultChunk({ toolCallId: "call_big", content: JSON.stringify(result) }, "offline-model");
+    assert.ok(Buffer.byteLength(frame) <= limits.DEFAULT_MAX_PENDING_SSE_BYTES,
+      `a failed run's tool-result frame is ${Buffer.byteLength(frame)} bytes, over the ${limits.DEFAULT_MAX_PENDING_SSE_BYTES}-byte pending budget`);
+  }
 });
 
 await check("busy_uses_default_limiter_without_spawn", async () => {

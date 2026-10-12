@@ -7,6 +7,12 @@ export const MAX_ACTIVE_DIAGRAM_JOBS = 2;
 export const REQUEST_DEADLINE_MS = 120_000;
 export const MAX_MODEL_OUTPUT_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_MAX_PENDING_SSE_BYTES = 256 * 1024;
+// Tool-result text bounds. A failed CLI run embeds its receipt error, stderr,
+// and diagnostics verbatim into the tool result frame and the upstream tool
+// message; the CLI's 1 MiB output caps bound the raw bytes, not those strings.
+export const MAX_TOOL_ERROR_CHARS = 2_000;
+export const MAX_DIAGNOSTIC_CHARS = 500;
+export const MAX_DIAGNOSTIC_ENTRIES = 20;
 
 export function requestDeadlineMessage(timeoutMs = REQUEST_DEADLINE_MS) {
   const seconds = Math.max(1, Math.round(timeoutMs / 1000));

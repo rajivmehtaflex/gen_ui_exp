@@ -17,7 +17,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createArtifactStore, DEFAULT_ARTIFACT_STORE_OPTIONS } from "./artifact-store.mjs";
 import { DIAGRAM_TYPES } from "./diagram-policy.mjs";
-import { createDiagramLimiter, MAX_ACTIVE_DIAGRAM_JOBS } from "./resource-limits.mjs";
+import {
+  createDiagramLimiter,
+  MAX_ACTIVE_DIAGRAM_JOBS,
+  MAX_DIAGNOSTIC_CHARS,
+  MAX_DIAGNOSTIC_ENTRIES,
+  MAX_TOOL_ERROR_CHARS,
+} from "./resource-limits.mjs";
 import { runProcessTree } from "./process-runner.mjs";
 export { DIAGRAM_TYPES } from "./diagram-policy.mjs";
 
@@ -366,15 +372,56 @@ async function runCli(cliArgs, signal = null, tempRoot, runner = runProcessTree)
     return { ok: false, error: `diagramify ${command} ${run.error}`, diagnostics: [] };
   }
   const receipt = parseJson(run.stdout);
-  const diagnostics = Array.isArray(receipt?.diagnostics) ? receipt.diagnostics : [];
+  const diagnostics = clampDiagnostics(receipt?.diagnostics);
+  const receiptError = typeof receipt?.error === "string" ? clampText(receipt.error) : "";
   if (!run.ok) {
-    return { ok: false, error: receipt?.error || run.stderr.trim() || run.error, diagnostics };
+    return { ok: false, error: receiptError || clampText(run.stderr.trim()) || run.error, diagnostics };
   }
   if (receipt?.ok !== true) {
     return { ok: false,
-      error: receipt?.error || `diagramify ${command} did not report a successful receipt`, diagnostics };
+      error: receiptError || `diagramify ${command} did not report a successful receipt`, diagnostics };
   }
   return { ok: true, receipt };
+}
+
+// Failure text becomes part of the tool result frame, the model-visible tool
+// message, and an SSE frame the writer may queue, so it is clamped here rather
+// than trusted to the CLI's output caps (1 MiB — four times the SSE budget).
+function clampText(text, maxChars = MAX_TOOL_ERROR_CHARS) {
+  const value = typeof text === "string" ? text : String(text ?? "");
+  return value.length <= maxChars ? value : `${value.slice(0, maxChars)}... [truncated]`;
+}
+
+// Small diagnostics pass through byte-faithful; only oversized ones are
+// reduced to their classification fields with a clamped message, and the list
+// itself is capped.
+function clampDiagnostics(diagnostics) {
+  const entries = Array.isArray(diagnostics) ? diagnostics : [];
+  const clamped = [];
+  for (const entry of entries.slice(0, MAX_DIAGNOSTIC_ENTRIES)) {
+    if (typeof entry === "string") {
+      clamped.push(clampText(entry, MAX_DIAGNOSTIC_CHARS));
+      continue;
+    }
+    if (entry === null || typeof entry !== "object") {
+      clamped.push({ message: clampText(entry, MAX_DIAGNOSTIC_CHARS) });
+      continue;
+    }
+    const serialized = JSON.stringify(entry);
+    if (serialized.length <= MAX_DIAGNOSTIC_CHARS) {
+      clamped.push(entry);
+      continue;
+    }
+    clamped.push({
+      code: clampText(entry.code, MAX_DIAGNOSTIC_CHARS),
+      severity: entry.severity === "warning" ? "warning" : "error",
+      message: clampText(entry.message ?? serialized, MAX_DIAGNOSTIC_CHARS),
+    });
+  }
+  if (entries.length > MAX_DIAGNOSTIC_ENTRIES) {
+    clamped.push({ message: `${entries.length - MAX_DIAGNOSTIC_ENTRIES} more diagnostics omitted` });
+  }
+  return clamped;
 }
 
 function parseJson(text) {

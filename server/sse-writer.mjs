@@ -1,12 +1,15 @@
-// Bounded, backpressure-aware SSE writer for the chat route. At most
-// maxPendingBytes may sit queued on the response: while the client reads
-// slower than the server produces, write() waits for drain instead of growing
-// the queue, and once the signal aborts (deadline or disconnect) nothing waits
-// again — only frames that already fit are flushed, so terminal diagnostics
-// still reach a reader that keeps up. Every write settles on drain, close,
-// error, or abort; a stalled or gone client can never leave the request
-// handler hanging on an unresolved promise. Pass a signal: the deadline is the
-// only bound on how long a write may wait for a client that never reads.
+// Bounded, backpressure-aware SSE writer for the chat route. While the client
+// reads slower than the server produces, write() waits for drain instead of
+// growing the queue past maxPendingBytes; a single frame larger than that
+// budget is only ever queued into an empty queue, so pending bytes can exceed
+// the budget by at most that one frame (frame sources are clamped upstream —
+// see runCli in diagram-tool.mjs). Once the signal aborts (deadline or
+// disconnect) nothing waits again — only frames that already fit are flushed,
+// so terminal diagnostics still reach a reader that keeps up. Every write
+// settles on drain, close, error, or abort; a stalled or gone client can never
+// leave the request handler hanging on an unresolved promise. Pass a signal:
+// the deadline is the only bound on how long a write may wait for a client
+// that never reads.
 import { DEFAULT_MAX_PENDING_SSE_BYTES } from "./resource-limits.mjs";
 
 export function createSseWriter(res, { signal = null, maxPendingBytes = DEFAULT_MAX_PENDING_SSE_BYTES } = {}) {
