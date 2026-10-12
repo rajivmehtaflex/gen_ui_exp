@@ -15,6 +15,13 @@ import { generateSystemPrompt } from "@openuidev/lang-core";
 import { isCannedInteractivePrompt, pickCannedRecipe } from "./canned-recipe.mjs";
 import { diagramModeForPrompt } from "./diagram-policy.mjs";
 import { validateChatBody } from "./chat-input.mjs";
+import {
+  createRequestDeadline,
+  DEFAULT_MAX_PENDING_SSE_BYTES,
+  REQUEST_DEADLINE_MS,
+  requestDeadlineMessage,
+} from "./resource-limits.mjs";
+import { createSseWriter } from "./sse-writer.mjs";
 import { cannedDiagramReply, runToolLoop } from "./tool-loop.mjs";
 import {
   registerArtifactRoutes,
@@ -102,14 +109,19 @@ app.post("/api/chat", async (req, res) => {
   res.flushHeaders();
 
   const id = `chatcmpl-${Date.now().toString(36)}`;
-  const abort = new AbortController();
-  let closed = false;
   // NB: on modern Node, req "close" fires once the request body is consumed —
   // it is NOT a client disconnect. res "close" is; skip it when we ended normally.
+  const disconnected = new AbortController();
+  let clientGone = false;
   res.on("close", () => {
-    if (!res.writableEnded) { closed = true; abort.abort(); }
+    if (!res.writableEnded) { clientGone = true; disconnected.abort(); }
   });
-  const write = (s) => { if (!closed) res.write(s); };
+  // One signal ends every piece of work this request owns: the provider
+  // stream, the diagram CLI, and the writer's waits. A disconnect fires it at
+  // once; otherwise it fires at the whole-request deadline.
+  const deadline = createRequestDeadline(disconnected.signal, REQUEST_DEADLINE_MS);
+  const sse = createSseWriter(res, { signal: deadline.signal, maxPendingBytes: DEFAULT_MAX_PENDING_SSE_BYTES });
+  const write = (s) => sse.write(s);
 
   try {
     if (!liveMode) {
@@ -128,40 +140,40 @@ app.post("/api/chat", async (req, res) => {
         }, "canned-recipe");
 
         for (const c of chunks) {
-          if (closed) return res.end();
-          write(c);
+          if (clientGone) return res.end();
+          await write(c);
           await new Promise((r) => setTimeout(r, 50));
         }
 
-        const result = await executeDiagramTool(JSON.stringify(toolArgs), abort.signal);
-        if (closed) return res.end();
+        const result = await executeDiagramTool(JSON.stringify(toolArgs), deadline.signal);
+        if (clientGone) return res.end();
 
-        write(toolResultChunk({
+        await write(toolResultChunk({
           toolCallId,
           content: JSON.stringify(result),
         }, "canned-recipe"));
 
         await new Promise((r) => setTimeout(r, 50));
-        write(chunk(id, {
+        await write(chunk(id, {
           role: "assistant",
           content: cannedDiagramReply(result),
         }));
-        write(chunk(id, {}, "stop"));
-        write("data: [DONE]\n\n");
+        await write(chunk(id, {}, "stop"));
+        await write("data: [DONE]\n\n");
         return res.end();
       }
 
       // ---- canned mode: dictate the recipe line by line, like a real stream.
       // root arrives first so the frame renders before its children exist.
       const lines = pickCannedRecipe(prompt).split("\n");
-      write(chunk(id, { role: "assistant", content: "" }));
+      await write(chunk(id, { role: "assistant", content: "" }));
       for (const line of lines) {
-        if (closed) return res.end();
-        write(chunk(id, { content: line + "\n" }));
+        if (clientGone) return res.end();
+        await write(chunk(id, { content: line + "\n" }));
         await new Promise((r) => setTimeout(r, 120));
       }
-      write(chunk(id, {}, "stop"));
-      write("data: [DONE]\n\n");
+      await write(chunk(id, {}, "stop"));
+      await write("data: [DONE]\n\n");
       return res.end();
     }
 
@@ -178,17 +190,26 @@ app.post("/api/chat", async (req, res) => {
 
     const diagramMode = diagramModeForPrompt(lastUserMsg);
 
-    await runToolLoop({
+    const { completed } = await runToolLoop({
       messages: conversationMessages,
       createCompletion: (request, options) => client.chat.completions.create(request, options),
       executeTool: executeDiagramTool,
       emit: write,
-      signal: abort.signal,
+      signal: deadline.signal,
       model: MODEL,
       initialMode: diagramMode,
     });
 
-    write("data: [DONE]\n\n");
+    // An expired deadline must be visible: the loop stopped early, so say why
+    // and settle through the terminal error event (never a blank reply). A
+    // client that hung up gets nothing — and no error after a successful stop,
+    // which the adapter would misread as a failed run.
+    if (!completed && deadline.signal.aborted && !clientGone) {
+      const message = requestDeadlineMessage(REQUEST_DEADLINE_MS);
+      await write(chunk(id, { content: message }));
+      await write(`data: ${JSON.stringify({ error: { message } })}\n\n`);
+    }
+    await write("data: [DONE]\n\n");
     return res.end();
   } catch (err) {
     // Mid-stream errors still end with [DONE] so the client adapter closes cleanly.
@@ -196,12 +217,15 @@ app.post("/api/chat", async (req, res) => {
     // The adapter silently skips chunks without choices[].delta.content — an
     // error sent only as {"error":...} would be a BLANK reply in chat. Emit
     // visible assistant text (unless the client itself hung up).
-    if (!closed && err.name !== "AbortError") {
-      write(chunk(id, { content: `Upstream error: ${err.message}. Check the server console, your key, model id, or rate limits.` }));
+    if (!clientGone && err.name !== "AbortError") {
+      await write(chunk(id, { content: `Upstream error: ${err.message}. Check the server console, your key, model id, or rate limits.` }));
     }
-    write(`data: ${JSON.stringify({ error: { message: err.message } })}\n\n`);
-    write("data: [DONE]\n\n");
+    await write(`data: ${JSON.stringify({ error: { message: err.message } })}\n\n`);
+    await write("data: [DONE]\n\n");
     return res.end();
+  } finally {
+    deadline.dispose();
+    sse.close();
   }
 });
 

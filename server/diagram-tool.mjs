@@ -2,10 +2,11 @@
 // artifact. Three pieces, nothing more — the tool declaration, prompt block,
 // and chat wiring land in later tasks.
 //
-//   executeDiagramTool(rawArgs)  validate -> deliver (vendored CLI subprocess)
-//                                -> artifactRegistry under a fresh UUID
+//   executeDiagramTool(rawArgs)  admit -> validate -> deliver (vendored CLI
+//                                subprocess) -> artifactRegistry under a fresh UUID
 //   registerArtifactRoutes(app)  GET /api/artifacts/:id serves registry HTML
 //   artifactRegistry             bounded in-memory artifact store
+//   diagramJobLimiter            at most MAX_ACTIVE_DIAGRAM_JOBS renders at once
 //
 // Artifact ids live ONLY in the registry — they never touch the filesystem, so
 // a bad or hostile id is always a plain 404.
@@ -16,6 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createArtifactStore, DEFAULT_ARTIFACT_STORE_OPTIONS } from "./artifact-store.mjs";
 import { DIAGRAM_TYPES } from "./diagram-policy.mjs";
+import { createDiagramLimiter, MAX_ACTIVE_DIAGRAM_JOBS } from "./resource-limits.mjs";
 import { runProcessTree } from "./process-runner.mjs";
 export { DIAGRAM_TYPES } from "./diagram-policy.mjs";
 
@@ -232,30 +234,48 @@ export function toolResultChunk({ toolCallId, content }, model = "diagram-model"
 
 export const artifactRegistry = createArtifactStore(DEFAULT_ARTIFACT_STORE_OPTIONS);
 
-// Executes one tool call. rawArgs is the JSON string the model produced.
-// Never throws — every failure mode comes back as {ok:false, ...}.
-export async function executeDiagramTool(rawArgs, signal = null, { cleanupTempDir = rmSync } = {}) {
-  let args;
-  try {
-    args = JSON.parse(typeof rawArgs === "string" ? rawArgs : String(rawArgs));
-  } catch (err) {
-    return { ok: false, error: `invalid JSON arguments: ${err.message}`, diagnostics: [] };
-  }
+// Process-wide admission for renders. Saturation is refused with a structured
+// busy result — there is no queue, so a burst of diagram requests can only
+// ever hold MAX_ACTIVE_DIAGRAM_JOBS subprocess trees.
+export const diagramJobLimiter = createDiagramLimiter(MAX_ACTIVE_DIAGRAM_JOBS);
 
-  const shapeError = checkArgsShape(args);
-  if (shapeError) return { ok: false, error: shapeError, diagnostics: [] };
+// Executes one tool call. rawArgs is the JSON string the model produced.
+// Never throws — every failure mode comes back as {ok:false, ...}. Admission is
+// held across validate and deliver and released in finally, including on the
+// abort that a request deadline or disconnect raises mid-render.
+export async function executeDiagramTool(rawArgs, signal = null,
+  { cleanupTempDir = rmSync, runner = runProcessTree, limiter = diagramJobLimiter } = {}) {
+  const release = limiter.tryAcquire();
+  if (!release) {
+    return {
+      ok: false,
+      busy: true,
+      error: `diagram renderer is busy: at most ${MAX_ACTIVE_DIAGRAM_JOBS} diagram jobs may run at once and there is no queue — retry shortly`,
+      diagnostics: [],
+    };
+  }
 
   let dir;
   try {
+    let args;
+    try {
+      args = JSON.parse(typeof rawArgs === "string" ? rawArgs : String(rawArgs));
+    } catch (err) {
+      return { ok: false, error: `invalid JSON arguments: ${err.message}`, diagnostics: [] };
+    }
+
+    const shapeError = checkArgsShape(args);
+    if (shapeError) return { ok: false, error: shapeError, diagnostics: [] };
+
     dir = mkdtempSync(path.join(tmpdir(), "diagram-tool-"));
     const specPath = path.join(dir, "spec.json");
     const htmlPath = path.join(dir, "artifact.html");
     writeFileSync(specPath, JSON.stringify(args.spec, null, 2));
 
-    const validated = await runCli(["validate", args.type, specPath, "--quality", QUALITY, "--json"], signal, dir);
+    const validated = await runCli(["validate", args.type, specPath, "--quality", QUALITY, "--json"], signal, dir, runner);
     if (!validated.ok) return { ok: false, error: validated.error, diagnostics: validated.diagnostics };
 
-    const delivered = await runCli(["deliver", args.type, specPath, htmlPath, "--quality", QUALITY, "--json"], signal, dir);
+    const delivered = await runCli(["deliver", args.type, specPath, htmlPath, "--quality", QUALITY, "--json"], signal, dir, runner);
     if (!delivered.ok) return { ok: false, error: delivered.error, diagnostics: delivered.diagnostics };
 
     const html = readFileSync(htmlPath, "utf8");
@@ -278,6 +298,7 @@ export async function executeDiagramTool(rawArgs, signal = null, { cleanupTempDi
       try { cleanupTempDir(dir, { recursive: true, force: true }); }
       catch (error) { console.error(`diagram-tool cleanup failed for ${dir}: ${error.message}`); }
     }
+    release();
   }
 }
 
@@ -328,9 +349,9 @@ function checkArgsShape(args) {
 // Runs one diagramify command. Resolves {ok:true, receipt} or
 // {ok:false, error, diagnostics} — the CLI prints its JSON receipt on stdout
 // even when it fails, so real diagnostics survive.
-async function runCli(cliArgs, signal = null, tempRoot) {
+async function runCli(cliArgs, signal = null, tempRoot, runner = runProcessTree) {
   const command = cliArgs[0];
-  const run = await runProcessTree({
+  const run = await runner({
     file: process.execPath,
     args: [CLI, ...cliArgs],
     cwd: REPO_ROOT,

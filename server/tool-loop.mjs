@@ -4,8 +4,33 @@ import {
   diagramToolDeclaration,
   toolResultChunk,
 } from "./diagram-tool.mjs";
+import { createStreamBudget, MAX_MODEL_OUTPUT_BYTES } from "./resource-limits.mjs";
 
 const MAX_DIAGRAM_EXECUTIONS = 3;
+const STALLED_REQUEST_MESSAGE = "I stopped this response before it finished because the request ran out of time or the connection closed. Ask again to continue.";
+
+function formatBytes(limitBytes) {
+  if (limitBytes >= 1024 * 1024) return `${Math.round(limitBytes / (1024 * 1024))} MiB`;
+  if (limitBytes >= 1024) return `${Math.round(limitBytes / 1024)} KiB`;
+  return `${limitBytes} bytes`;
+}
+
+function outputBudgetMessage(limitBytes) {
+  return `I stopped this response because it exceeded the ${formatBytes(limitBytes)} output budget for one request. Ask me to continue with a smaller diagram.`;
+}
+
+// Bytes a provider delta adds to what this request must retain: assistant text
+// plus tool-call arguments. Everything else in a delta is relayed, not stored.
+function modelDeltaBytes(delta) {
+  if (!delta) return 0;
+  let bytes = typeof delta.content === "string" ? Buffer.byteLength(delta.content) : 0;
+  for (const call of delta.tool_calls ?? []) {
+    if (typeof call?.function?.arguments === "string") {
+      bytes += Buffer.byteLength(call.function.arguments);
+    }
+  }
+  return bytes;
+}
 
 function assistantChunk(model, content, finishReason = null) {
   return `data: ${JSON.stringify({
@@ -42,10 +67,14 @@ function errorResult(error) {
   return { ok: false, error, diagnostics: [] };
 }
 
-// All state belongs to this invocation. createCompletion and executeTool are
-// injected so the same orchestration can be exercised without a provider.
-export async function runToolLoop({ messages, createCompletion, executeTool, emit, signal, model, initialMode }) {
+// The round machine. Returns true when the request reached one of its natural
+// endings (a settled final response or a visible failure) and false only when
+// the signal aborted mid-flight — runToolLoop turns the latter into a visible
+// terminal diagnostic.
+async function runToolLoopRounds({ messages, createCompletion, executeTool, emit, signal, model, initialMode,
+  maxModelOutputBytes = MAX_MODEL_OUTPUT_BYTES }) {
   const conversation = [...messages];
+  const budget = createStreamBudget(maxModelOutputBytes);
   let executions = 0;
   let toolChoice = initialToolChoice(initialMode);
   let finalAfterSuccess = false;
@@ -64,10 +93,10 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
         stream: true,
       }, { signal });
     } catch (error) {
-      if (signal?.aborted || error?.name === "AbortError") return;
+      if (signal?.aborted || error?.name === "AbortError") return false;
       if (finalRequest) {
         await visibleStop(emit, model, "The diagram was created, but I couldn't finish the response. Open it in the artifact panel.");
-        return;
+        return true;
       }
       throw error;
     }
@@ -77,10 +106,17 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
     let assistantText = "";
     let invalidFinalFinish = false;
     let heldFinalStop = null;
+    let overBudget = false;
     try {
       for await (const part of stream) {
-        if (signal?.aborted) return;
+        if (signal?.aborted) return false;
         const choice = part.choices?.[0];
+        // Charge before retaining or relaying: nothing over budget is kept.
+        const incoming = modelDeltaBytes(choice?.delta);
+        if (incoming > 0 && !budget.tryCharge(incoming)) {
+          overBudget = true;
+          break;
+        }
         if (choice?.delta?.content) assistantText += choice.delta.content;
         if (choice?.delta?.tool_calls) toolDeltas.push(choice.delta.tool_calls);
         if (choice?.finish_reason) finishReason = choice.finish_reason;
@@ -97,17 +133,23 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
         }
       }
     } catch (error) {
-      if (signal?.aborted || error?.name === "AbortError") return;
+      if (signal?.aborted || error?.name === "AbortError") return false;
       if (finalRequest) {
         await visibleStop(emit, model, "The diagram was created, but I couldn't finish the response. Open it in the artifact panel.");
-        return;
+        return true;
       }
       throw error;
     }
-    if (signal?.aborted) return;
+    if (signal?.aborted) return false;
+    if (overBudget) {
+      // A truncated stream must never look like success: execute nothing
+      // further and explain the budget in visible assistant text.
+      await visibleStop(emit, model, outputBudgetMessage(maxModelOutputBytes));
+      return true;
+    }
     if (finalRequest && invalidFinalFinish) {
       await visibleStop(emit, model, "The diagram was created, but I couldn't finish the response. Open it in the artifact panel.");
-      return;
+      return true;
     }
     if (finishReason !== "tool_calls") {
       if (finalRequest && (finishReason !== "stop" || !assistantText.trim())) {
@@ -115,14 +157,14 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
       } else if (finalRequest && heldFinalStop) {
         await emit(heldFinalStop);
       }
-      return;
+      return true;
     }
 
     batchNumber++;
     const calls = accumulateToolCalls(toolDeltas);
     if (calls.length === 0) {
       await visibleStop(emit, model, "I couldn't produce a valid diagram — the provider returned an empty tool call.");
-      return;
+      return true;
     }
 
     const normalized = calls.map((call, index) => ({
@@ -153,7 +195,7 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
     let lastFailure = null;
     let batchExecutions = 0;
     for (const call of normalized) {
-      if (signal?.aborted) return;
+      if (signal?.aborted) return false;
       let result;
       if (call.missingId) {
         result = errorResult("invalid tool call: missing id");
@@ -183,20 +225,20 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
         try {
           result = await executeTool(call.arguments, signal);
         } catch (error) {
-          if (signal?.aborted || error?.name === "AbortError") return;
+          if (signal?.aborted || error?.name === "AbortError") return false;
           result = errorResult(`diagram execution failed: ${error.message}`);
         }
       }
-      if (signal?.aborted) return;
+      if (signal?.aborted) return false;
       await emit(toolResultChunk({ toolCallId: call.id, content: JSON.stringify(result) }, model));
       conversation.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
       if (result.ok) succeeded = true;
       else lastFailure = result;
     }
-    if (signal?.aborted) return;
+    if (signal?.aborted) return false;
     if (finalRequest) {
       await visibleStop(emit, model, "The diagram was created, but I couldn't finish the response. Open it in the artifact panel.");
-      return;
+      return true;
     }
     if (succeeded) {
       finalAfterSuccess = true;
@@ -205,8 +247,22 @@ export async function runToolLoop({ messages, createCompletion, executeTool, emi
     }
     if (executions >= MAX_DIAGRAM_EXECUTIONS || batchExecutions === 0) {
       await visibleStop(emit, model, `I couldn't produce a valid diagram — ${failureMessage(lastFailure)}.`);
-      return;
+      return true;
     }
     toolChoice = { type: "function", function: { name: "create_diagram" } };
   }
+  return false;
+}
+
+// All state belongs to this invocation. createCompletion and executeTool are
+// injected so the same orchestration can be exercised without a provider. An
+// aborted request (deadline expiry or client disconnect) still settles visibly:
+// the stream gets a terminal diagnostic instead of a silent truncation, and the
+// caller learns the request did not complete.
+export async function runToolLoop(options) {
+  const completed = await runToolLoopRounds(options);
+  if (!completed && options.signal?.aborted) {
+    await visibleStop(options.emit, options.model, STALLED_REQUEST_MESSAGE);
+  }
+  return { completed };
 }
