@@ -13,6 +13,7 @@ import express from "express";
 import OpenAI from "openai";
 import { generateSystemPrompt } from "@openuidev/lang-core";
 import { isCannedInteractivePrompt, pickCannedRecipe } from "./canned-recipe.mjs";
+import { diagramModeForPrompt } from "./diagram-policy.mjs";
 import {
   registerArtifactRoutes,
   diagramToolDeclaration,
@@ -163,9 +164,7 @@ app.post("/api/chat", async (req, res) => {
     ];
 
     const lastUserMsg = messages[messages.length - 1]?.content ?? "";
-    const isInteractiveQuery = /(?:interactive|explorable|diagramify|artifact|(?:dataflow|architecture|sequence|workflow|lifecycle|explainer).*diagram)/i.test(
-      String(lastUserMsg)
-    );
+    const diagramMode = diagramModeForPrompt(lastUserMsg);
 
     const MAX_ROUNDS = 3;
     let round = 0;
@@ -174,8 +173,10 @@ app.post("/api/chat", async (req, res) => {
     while (round < MAX_ROUNDS) {
       round++;
       let toolChoice = "auto";
-      if (round === 1 && isInteractiveQuery) {
+      if (round === 1 && diagramMode === "interactive") {
         toolChoice = { type: "function", function: { name: "create_diagram" } };
+      } else if (round === 1 && diagramMode === "inline") {
+        toolChoice = "none";
       } else if (lastToolResult && !lastToolResult.ok) {
         toolChoice = { type: "function", function: { name: "create_diagram" } };
       } else if (lastToolResult && lastToolResult.ok) {

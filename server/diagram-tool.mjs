@@ -15,6 +15,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DIAGRAM_TYPES } from "./diagram-policy.mjs";
+export { DIAGRAM_TYPES } from "./diagram-policy.mjs";
 
 // Repo root (this file is <repo>/server/diagram-tool.mjs). Resolved from this
 // module's URL — not process.cwd() — so the subprocess cwd is right no matter
@@ -25,16 +27,6 @@ const QUALITY = "showcase";
 // A render spawns the CLI's own check-render-output pass, so this is generous;
 // a hung subprocess must still not pin the server forever.
 const SUBPROCESS_TIMEOUT_MS = 15_000;
-
-// The CLI's diagram types (diagramify --help) — the same menu the model gets.
-export const DIAGRAM_TYPES = Object.freeze([
-  "architecture",
-  "workflow",
-  "sequence",
-  "dataflow",
-  "lifecycle",
-  "explainer-steps",
-]);
 
 const promptExampleSpec = readFileSync(
   path.join(REPO_ROOT, "server", "examples", "diagrams", "prompt-example.architecture.json"),
@@ -61,11 +53,9 @@ export const diagramToolDeclaration = Object.freeze({
 export const diagramPromptBlock = `
 ## Interactive Diagram Tool (create_diagram)
 
-### CRITICAL INSTRUCTION ON INTERACTIVE DIAGRAMS
-When the user asks for a rich, explorable, or interactive diagram (or asks for an architecture, dataflow, sequence, workflow, lifecycle, or explainer diagram):
-1. YOU MUST INVOKE THE \`create_diagram\` TOOL. Do NOT output openui-lang code (never output \`root = Card(...)\`).
-2. NEVER output mock cards or placeholder buttons like \`Button("Open Diagram")\`. The interactive diagram artifact is automatically rendered in an interactive viewer panel by the host platform.
-3. If a tool call fails validation, inspect the diagnosed errors and invoke \`create_diagram\` again with the corrected spec (maximum 2 retries). Do NOT output plain text explanations when retrying.
+### Hybrid routing
+An explicit inline diagram request takes precedence over interactive wording. Render it with the browser library's FlowDiagram, SequenceDiagram, or StepExplainer components as appropriate. For an explicit interactive, explorable, artifact, or diagramify diagram request, invoke \`create_diagram\`; the host displays the resulting artifact. For an ordinary sketch or diagram request, choose the representation that best serves the user. Ordinary non-diagram chat needs no diagram tool.
+If a tool call fails validation, inspect the diagnostics and retry the corrected spec at most twice.
 
 ### Diagram Types and Schemas
 
@@ -78,44 +68,44 @@ All diagrams share:
 #### 1. architecture
 System components, boundaries, services, deployments.
 - \`diagram_type\`: "architecture"
-- \`components\`: array of \`{ "id": string, "type": componentType, "label": string, "sublabel"?: string, "tier": integer (0..4), "col": integer (0..4), "tag"?: string }\`
+- \`components\`: at least one \`{ "id": string, "type": componentType, "label": string, "sublabel"?: string, "tag"?: string, "pos"?: [x, y], "size"?: [width, height], "row"?: integer >= 0, "col"?: integer >= 0 }\`. For manual placement, give each component \`pos\` (and optionally \`size\`). For automatic placement, set \`layout.mode\` to \`"grid"\` and place components with \`row\` and \`col\` (both zero-based). Do not use manual and grid placement on the same component.
 - \`connections\`: array of \`{ "from": string, "to": string, "label"?: string, "variant"?: variant }\`
 
 #### 2. dataflow
 Data transformations, streaming pipelines, ETL stages, event ingestion.
 - \`diagram_type\`: "dataflow"
 - \`stages\`: array of 2 to 5 stage objects: \`[{ "label": string }, ...]\` (MUST be objects with "label", NEVER strings!).
-- \`nodes\`: array of \`{ "id": string, "type": componentType, "label": string, "sublabel"?: string, "stage": integer (0-indexed integer corresponding to stages array, e.g. 0, 1, 2; NEVER string!), "row": integer (1-indexed row position >= 1, e.g. 1, 2; NEVER 0!), "tag"?: string }\`
+- \`nodes\`: at least two \`{ "id": string, "type": componentType, "label": string, "sublabel"?: string, "stage": integer (zero-based index into stages), "row": integer >= 0, "tag"?: string }\`
 - \`flows\`: array of \`{ "from": string, "to": string, "label": string, "classification"?: string, "variant"?: variant, "route"?: "auto" | "straight" | "bottom-channel" | "top-channel" }\`
 *(CRITICAL: Use "flows", NOT "edges" or "connections". Use "nodes", NOT "components".)*
 
 #### 3. sequence
 Request lifecycles, protocol handshakes, distributed messaging.
 - \`diagram_type\`: "sequence"
-- \`participants\`: array of \`{ "id": string, "type": componentType, "label": string, "sublabel"?: string }\`
-- \`messages\`: array of \`{ "id": string, "from": string, "to": string, "y": integer (increasing vertical coordinate >= 150, e.g. 180, 240, 300), "label": string, "variant"?: "default" | "emphasis" | "security" | "return" | "dashed" }\`
+- \`participants\`: at least two \`{ "id": string, "type": componentType, "label": string, "sublabel"?: string }\`
+- \`messages\`: at least one \`{ "id"?: string, "from": string, "to": string, "y": number (increasing vertical coordinate >= 160), "label": string, "variant"?: "default" | "emphasis" | "security" | "return" | "dashed" }\`
 - \`activations\`?: array of \`{ "participant": string, "from": number, "to": number, "type"?: componentType }\`
 
 #### 4. workflow
 Business processes, human-in-the-loop flows, multi-stage procedures.
 - \`diagram_type\`: "workflow"
-- \`lanes\`: array of \`{ "id": string, "label": string, "variant"?: "normal" | "exception" }\`
-- \`nodes\`: array of \`{ "id": string, "lane": string (lane id), "col": integer (0..5), "type": componentType, "label": string, "sublabel"?: string }\`
+- \`lanes\`: at least one \`{ "id": string, "label": string, "variant"?: "normal" | "exception" }\`
+- \`nodes\`: at least one \`{ "id": string, "lane": string (lane id), "col": integer (0..5), "type": componentType, "label": string, "sublabel"?: string }\`
 - \`edges\`: array of \`{ "from": string, "to": string, "label"?: string, "variant"?: variant }\`
 *(CRITICAL: Use "edges".)*
 
 #### 5. lifecycle
 Entity states, state transitions, domain object phases.
 - \`diagram_type\`: "lifecycle"
-- \`lanes\`: array of 1 to 4 objects \`{ "id": string, "label": string }\`
-- \`states\`: array of \`{ "id": string, "type": "start" | "active" | "waiting" | "decision" | "success" | "failure" | "neutral" | "external", "label": string, "sublabel"?: string, "lane": string (lane id), "col": integer (0..4), "tag"?: string }\`
+- \`lanes\`: array of 1 to 4 objects \`{ "id": string, "label": string }\`; include lane id \`"main"\` for the phase rail, optionally \`"terminal"\` for outcomes.
+- \`states\`: at least two \`{ "id": string, "type": "start" | "active" | "waiting" | "decision" | "success" | "failure" | "neutral" | "external", "label": string, "sublabel"?: string, "lane": string (lane id), "col": integer (0..4), "tag"?: string }\`
 - \`transitions\`: array of \`{ "from": string, "to": string, "label"?: string, "variant"?: variant, "route"?: "auto" | "straight" | "drop" | "bottom-channel" | "top-channel" }\`
 *(CRITICAL: Use "transitions".)*
 
 #### 6. explainer-steps
 Multi-step conceptual walkthroughs, technical mechanics.
 - \`diagram_type\`: "explainer-steps"
-- \`steps\`: array of \`{ "id": string, "type": "start" | "active" | "waiting" | "decision" | "success" | "failure" | "neutral" | "external", "label": string, "sublabel"?: string, "description"?: string, "code"?: { "language": string, "content": string }, "math"?: string }\`
+- \`steps\`: at least two \`{ "id": string, "type": "start" | "active" | "waiting" | "decision" | "success" | "failure" | "neutral" | "external", "label": string (1..60 chars), "sublabel"?: string (max 80), "description"?: string (max 320), "code"?: { "language"?: string (max 24), "content": string (max 600) }, "math"?: string (max 200) }\`
 
 ### Authoring Rules
 1. Always generate valid diagramify JSON for the specified \`type\`.

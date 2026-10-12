@@ -3,6 +3,7 @@
 // uses them. root comes first (frame before children), forward references,
 // built-ins + our diagram components only, positional args, null for skipped
 // middle optionals (house pattern from the built-in prompt examples).
+import { diagramModeForPrompt } from "./diagram-policy.mjs";
 export const cannedRecipe = `root = Card([header, intro, how, followups])
 header = CardHeader("Hello from GenUI", "Your first AI-generated interface")
 intro = TextContent("This card was not hand-coded. Lines of OpenUI Lang streamed from the server and your browser cooked them into live UI.", "default")
@@ -60,10 +61,9 @@ s3 = ExplainerStep("Server decision", "An unchanged resource answers 304 with no
 s4 = ExplainerStep("Reuse", "The browser stores the new response under its Cache-Control policy and serves it until it goes stale.")
 tip = TextContent("Ask for this flow as a diagram next.", "small")`;
 
-// Keyword router for canned mode — mirrors what a live model would answer.
+// Canned mode shares the explicit diagram routing used by live mode.
 export function isCannedInteractivePrompt(prompt) {
-  const text = String(prompt ?? "").toLowerCase();
-  return /interactive|explorable/.test(text);
+  return diagramModeForPrompt(prompt) === "interactive";
 }
 
 export function pickCannedRecipe(prompt) {
