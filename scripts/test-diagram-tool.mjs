@@ -6,7 +6,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import express from "express";
 
-const { executeDiagramTool, registerArtifactRoutes, artifactRegistry, DIAGRAM_TYPES } = await import(
+const {
+  executeDiagramTool,
+  registerArtifactRoutes,
+  artifactRegistry,
+  DIAGRAM_TYPES,
+  diagramToolDeclaration,
+  diagramPromptBlock,
+  accumulateToolCalls,
+} = await import(
   "../server/diagram-tool.mjs"
 );
 
@@ -146,6 +154,62 @@ await check("traversal-shaped and slash-containing ids return a JSON 404 and rea
   } finally {
     server.close();
   }
+});
+
+await check("diagramToolDeclaration specifies create_diagram with the 6 types", () => {
+  assert.equal(diagramToolDeclaration.type, "function");
+  assert.equal(diagramToolDeclaration.function?.name, "create_diagram");
+  const params = diagramToolDeclaration.function?.parameters;
+  assert.equal(params?.type, "object");
+  assert.deepEqual([...params.properties?.type?.enum], [
+    "architecture", "workflow", "sequence", "dataflow", "lifecycle", "explainer-steps",
+  ]);
+  assert.ok(params.required?.includes("title"));
+  assert.ok(params.required?.includes("type"));
+  assert.ok(params.required?.includes("spec"));
+});
+
+await check("diagramPromptBlock contains authoring guidance and inlined example", () => {
+  assert.ok(typeof diagramPromptBlock === "string" && diagramPromptBlock.length > 0);
+  assert.ok(diagramPromptBlock.includes("create_diagram"));
+  for (const t of DIAGRAM_TYPES) {
+    assert.ok(diagramPromptBlock.includes(t), `prompt block must mention ${t}`);
+  }
+  assert.ok(diagramPromptBlock.includes("showcase"));
+  assert.ok(diagramPromptBlock.includes("Diagram Artifact Pipeline"));
+});
+
+await check("accumulateToolCalls handles empty input, fragment merging, and parallel calls", () => {
+  assert.deepEqual(accumulateToolCalls([]), []);
+  assert.deepEqual(accumulateToolCalls(null), []);
+
+  // Fragment split across 3 chunks:
+  const chunk1 = [{ index: 0, id: "call_1", type: "function", function: { name: "create_diagram", arguments: '{"title":' } }];
+  const chunk2 = [{ index: 0, function: { arguments: '"My Diagram",' } }];
+  const chunk3 = [{ index: 0, function: { arguments: '"type":"architecture"}' } }];
+
+  const merged = accumulateToolCalls([chunk1, chunk2, chunk3]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].id, "call_1");
+  assert.equal(merged[0].name, "create_diagram");
+  assert.equal(merged[0].arguments, '{"title":"My Diagram","type":"architecture"}');
+
+  // Parallel calls: index 0 and 1
+  const parallelCalls = accumulateToolCalls([
+    [
+      { index: 0, id: "c1", function: { name: "create_diagram", arguments: '{"t":"1"' } },
+      { index: 1, id: "c2", function: { name: "create_diagram", arguments: '{"t":"2"' } },
+    ],
+    [
+      { index: 0, function: { arguments: '}' } },
+      { index: 1, function: { arguments: '}' } },
+    ],
+  ]);
+  assert.equal(parallelCalls.length, 2);
+  assert.equal(parallelCalls[0].id, "c1");
+  assert.equal(parallelCalls[0].arguments, '{"t":"1"}');
+  assert.equal(parallelCalls[1].id, "c2");
+  assert.equal(parallelCalls[1].arguments, '{"t":"2"}');
 });
 
 process.exit(failures ? 1 : 0);

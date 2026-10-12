@@ -3,7 +3,6 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "Diagram Artifact Pipeline",
-    "subtitle": "How a chat turn becomes a validated diagram artifact",
     "output": "prompt-example.html",
     "quality_profile": "showcase"
   },

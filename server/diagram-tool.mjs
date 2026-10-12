@@ -36,6 +36,76 @@ export const DIAGRAM_TYPES = Object.freeze([
   "explainer-steps",
 ]);
 
+const promptExampleSpec = readFileSync(
+  path.join(REPO_ROOT, "server", "examples", "diagrams", "prompt-example.architecture.json"),
+  "utf8",
+).trim();
+
+export const diagramToolDeclaration = Object.freeze({
+  type: "function",
+  function: {
+    name: "create_diagram",
+    description: "Author an interactive, explorable diagram artifact. Read system prompt for authoring contract.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short descriptive title of the diagram" },
+        type: { type: "string", enum: DIAGRAM_TYPES, description: "One of the 6 supported diagram types" },
+        spec: { type: "object", description: "The complete diagramify JSON specification matching the type" },
+      },
+      required: ["title", "type", "spec"],
+    },
+  },
+});
+
+export const diagramPromptBlock = `
+## Interactive Diagram Tool (create_diagram)
+
+When the user asks for a rich, explorable, or interactive diagram (pan/zoom, relationship tracing, export), call \`create_diagram\`. For quick inline sketches in the chat, use inline Card components instead.
+
+### Diagram Types
+- architecture: system components, boundaries, services, deployments
+- workflow: business processes, human-in-the-loop flows, multi-stage procedures
+- sequence: request lifecycles, protocol handshakes, distributed messaging
+- dataflow: data transformations, pipelines, ETL stages, ingestion
+- lifecycle: entity states, state transitions, domain object phases
+- explainer-steps: multi-step conceptual walkthroughs, technical mechanics
+
+### Authoring Rules
+1. Always generate valid diagramify JSON for the specified \`type\`.
+2. Generate fresh unique ids for all components and connections.
+3. Keep diagrams focused: <=12 primary nodes and one main flow path.
+4. Set meta.quality_profile: "showcase".
+5. Omit meta.subtitle, meta.legend, and meta.visual_preset.
+6. If a tool call fails validation, correct only the diagnosed errors (maximum 2 retries). If still failing, explain the issue honestly.
+
+### Canonical Example (architecture)
+\`\`\`json
+${promptExampleSpec}
+\`\`\`
+`.trim();
+
+export function accumulateToolCalls(deltas) {
+  if (!Array.isArray(deltas) || deltas.length === 0) return [];
+  const map = new Map();
+  for (const chunk of deltas) {
+    if (!Array.isArray(chunk)) continue;
+    for (const item of chunk) {
+      if (item === null || typeof item !== "object") continue;
+      const index = item.index ?? 0;
+      let existing = map.get(index);
+      if (!existing) {
+        existing = { id: "", name: "", arguments: "" };
+        map.set(index, existing);
+      }
+      if (item.id) existing.id = item.id;
+      if (item.function?.name) existing.name = item.function.name;
+      if (item.function?.arguments) existing.arguments += item.function.arguments;
+    }
+  }
+  return Array.from(map.values());
+}
+
 // id -> { title, type, html, hash }. Unbounded by design: this is a demo with
 // no persistence, and later tasks decide the eviction story.
 export const artifactRegistry = new Map();
