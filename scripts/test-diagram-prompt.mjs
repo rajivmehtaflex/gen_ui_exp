@@ -101,11 +101,9 @@ try {
     const mutations = [
       ["architecture", (s) => { s.components = []; }],
       ["workflow", (s) => { s.lanes = []; }],
-      ["workflow", (s) => { s.nodes = []; }],
       ["sequence", (s) => { s.participants.pop(); }],
       ["sequence", (s) => { s.messages = []; }],
       ["dataflow", (s) => { s.stages.pop(); }],
-      ["dataflow", (s) => { s.nodes = [s.nodes[0]]; }],
       ["lifecycle", (s) => { s.states.pop(); }],
       ["explainer-steps", (s) => { s.steps.pop(); }],
       ["explainer-steps", (s) => { s.steps[0].label = "x".repeat(61); }],
@@ -115,6 +113,24 @@ try {
     for (const [type, mutate] of mutations) {
       const spec = structuredClone(fixtures[type]); mutate(spec);
       assert.equal(validate(type, spec).receipt.ok, false, `${type} invalid bounds must fail`);
+    }
+    const nodeMinimumCases = [
+      ["workflow", 1, (spec) => { spec.nodes = []; spec.edges = []; }],
+      ["dataflow", 2, (spec) => { spec.nodes = [spec.nodes[0]]; spec.flows = []; }],
+    ];
+    for (const [type, minimum, makeUnderMinimum] of nodeMinimumCases) {
+      const validSpec = structuredClone(fixtures[type]);
+      valid(type, validSpec);
+      const underMinimum = structuredClone(validSpec);
+      makeUnderMinimum(underMinimum);
+      const { result, receipt } = validate(type, underMinimum);
+      assert.notEqual(result.status, 0, `${type} under-minimum nodes must fail`);
+      assert.ok(receipt.diagnostics.some((diagnostic) =>
+        diagnostic.code === "schema/minItems"
+        && diagnostic.subject?.path === "/nodes"
+        && diagnostic.evidence?.keyword === "minItems"
+        && diagnostic.evidence?.limit === minimum
+      ), `${type} must report its nodes minItems=${minimum} violation: ${JSON.stringify(receipt.diagnostics)}`);
     }
     const boundary = structuredClone(fixtures["explainer-steps"]);
     boundary.steps[0].label = "L".repeat(60);
