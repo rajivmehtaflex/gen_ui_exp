@@ -117,11 +117,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Produce `validateChatBody(body: unknown): {ok:true,messages: ChatMessage[]} | {ok:false,status:400|413,error:string}`; `ChatMessage` is the supported user/assistant/tool OpenAI history subset. Assistant tool-call declarations and matching tool replies must be preserved and checked. Trusted system prompt is added only after validation.
 
-- [ ] Add `bad_histories_return_json`: missing/empty messages, null element, unknown/system/developer role, content object/unsupported part, malformed assistant function args, orphan or duplicated tool result, and 101 messages must fail before an SSE content type is sent. Valid user text, text-part array, completed assistant-tool exchange and null assistant content with valid calls must pass. At 1 MiB body boundary require the documented 413 behavior.
-- [ ] Run `node scripts/test-chat-input.mjs`; confirm invalid messages currently pass or default HTML errors fail JSON assertions.
-- [ ] Implement pure history validation with role-appropriate content and correlation checks; install JSON middleware error handling. Normalize only supported text parts and return actionable non-sensitive errors. Do not reject legitimate client-generated history without inspecting the installed message formatter.
-- [ ] Re-run input and loop checks; require HTTP status, JSON body and no upstream invocation for invalid input.
-- [ ] Commit with `fix(api): validate bounded chat history before streaming`.
+- [x] Add `bad_histories_return_json`: missing/empty messages, null element, unknown/system/developer role, content object/unsupported part, malformed assistant function args, orphan or duplicated tool result, and 101 messages must fail before an SSE content type is sent. Valid user text, text-part array, completed assistant-tool exchange and null assistant content with valid calls must pass. At the 1 MiB boundary, verify exactly-at-limit is accepted and one-byte-over returns documented 413 JSON.
+- [x] Run `node scripts/test-chat-input.mjs`; confirm invalid messages currently pass or default HTML errors fail JSON assertions.
+- [x] Implement pure history validation with role-appropriate content and correlation checks; install JSON middleware error handling. Normalize only supported text parts and return actionable non-sensitive errors. Do not reject legitimate client-generated history without inspecting the installed message formatter.
+- [x] Re-run input and loop checks; require HTTP status, JSON body and no upstream invocation for invalid input.
+- [x] Commit with `fix(api): validate bounded chat history before streaming`.
 
 ### Task 7: Contain subprocess trees and cleanup (G12, G13)
 

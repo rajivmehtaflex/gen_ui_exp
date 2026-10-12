@@ -14,6 +14,7 @@ import OpenAI from "openai";
 import { generateSystemPrompt } from "@openuidev/lang-core";
 import { isCannedInteractivePrompt, pickCannedRecipe } from "./canned-recipe.mjs";
 import { diagramModeForPrompt } from "./diagram-policy.mjs";
+import { validateChatBody } from "./chat-input.mjs";
 import { cannedDiagramReply, runToolLoop } from "./tool-loop.mjs";
 import {
   registerArtifactRoutes,
@@ -74,11 +75,24 @@ function chunk(id, delta, finishReason = null) {
   })}\n\n`;
 }
 
-app.post("/api/chat", async (req, res) => {
-  const { messages } = req.body ?? {};
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: "body must be { messages: [...] }" });
+function lastUserText(messages) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role !== "user") continue;
+    if (typeof message.content === "string") return message.content;
+    return message.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
   }
+  return "";
+}
+
+app.post("/api/chat", async (req, res) => {
+  const validation = validateChatBody(req.body);
+  if (!validation.ok) return res.status(validation.status).json({ error: validation.error });
+  const { messages } = validation;
+  const lastUserMsg = lastUserText(messages);
 
   res.set({
     "Content-Type": "text/event-stream",
@@ -99,7 +113,7 @@ app.post("/api/chat", async (req, res) => {
 
   try {
     if (!liveMode) {
-      const prompt = String(messages[messages.length - 1]?.content ?? "");
+      const prompt = lastUserMsg;
       if (isCannedInteractivePrompt(prompt)) {
         const toolCallId = `call_${Date.now().toString(36)}`;
         const toolArgs = {
@@ -162,7 +176,6 @@ app.post("/api/chat", async (req, res) => {
       ...messages,
     ];
 
-    const lastUserMsg = messages[messages.length - 1]?.content ?? "";
     const diagramMode = diagramModeForPrompt(lastUserMsg);
 
     await runToolLoop({
@@ -206,6 +219,17 @@ if (existsSync(distDir)) {
     return res.status(404).json({ error: "not found" });
   });
 }
+
+app.use((error, _req, res, next) => {
+  if (res.headersSent) return next(error);
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({ error: "Request body exceeds the 1 MiB limit." });
+  }
+  if (error?.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "Request body must be valid JSON." });
+  }
+  return next(error);
+});
 
 app.listen(PORT, () => {
   console.log(`gen_ui_exp server on http://localhost:${PORT}  (mode: ${liveMode ? "live" : "canned"}, model: ${MODEL})`);
