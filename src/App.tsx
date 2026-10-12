@@ -9,11 +9,16 @@
 import { AgentInterface } from "@openuidev/react-ui";
 import { appChatLibrary } from "./library/chat-library";
 import { llm } from "./llm";
+import { diagramArtifactRenderer } from "./artifacts/diagram-artifact";
 
 export default function App() {
   return (
     <div style={{ height: "100vh" }}>
-      <AgentInterface llm={llm} componentLibrary={appChatLibrary} />
+      <AgentInterface
+        llm={llm}
+        componentLibrary={appChatLibrary}
+        artifactRenderers={[diagramArtifactRenderer]}
+      />
     </div>
   );
 }
