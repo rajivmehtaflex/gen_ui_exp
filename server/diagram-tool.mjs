@@ -9,13 +9,13 @@
 //
 // Artifact ids live ONLY in the registry — they never touch the filesystem, so
 // a bad or hostile id is always a plain 404.
-import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DIAGRAM_TYPES } from "./diagram-policy.mjs";
+import { runProcessTree } from "./process-runner.mjs";
 export { DIAGRAM_TYPES } from "./diagram-policy.mjs";
 
 // Repo root (this file is <repo>/server/diagram-tool.mjs). Resolved from this
@@ -235,7 +235,7 @@ export const artifactRegistry = new Map();
 
 // Executes one tool call. rawArgs is the JSON string the model produced.
 // Never throws — every failure mode comes back as {ok:false, ...}.
-export async function executeDiagramTool(rawArgs, signal = null) {
+export async function executeDiagramTool(rawArgs, signal = null, { cleanupTempDir = rmSync } = {}) {
   let args;
   try {
     args = JSON.parse(typeof rawArgs === "string" ? rawArgs : String(rawArgs));
@@ -253,10 +253,10 @@ export async function executeDiagramTool(rawArgs, signal = null) {
     const htmlPath = path.join(dir, "artifact.html");
     writeFileSync(specPath, JSON.stringify(args.spec, null, 2));
 
-    const validated = await runCli(["validate", args.type, specPath, "--quality", QUALITY, "--json"], signal);
+    const validated = await runCli(["validate", args.type, specPath, "--quality", QUALITY, "--json"], signal, dir);
     if (!validated.ok) return { ok: false, error: validated.error, diagnostics: validated.diagnostics };
 
-    const delivered = await runCli(["deliver", args.type, specPath, htmlPath, "--quality", QUALITY, "--json"], signal);
+    const delivered = await runCli(["deliver", args.type, specPath, htmlPath, "--quality", QUALITY, "--json"], signal, dir);
     if (!delivered.ok) return { ok: false, error: delivered.error, diagnostics: delivered.diagnostics };
 
     const html = readFileSync(htmlPath, "utf8");
@@ -274,7 +274,10 @@ export async function executeDiagramTool(rawArgs, signal = null) {
     // write, artifact read) is still a failed tool call for the model to retry.
     return { ok: false, error: `diagram-tool error: ${err.message}`, diagnostics: [] };
   } finally {
-    if (dir) rmSync(dir, { recursive: true, force: true });
+    if (dir) {
+      try { cleanupTempDir(dir, { recursive: true, force: true }); }
+      catch (error) { console.error(`diagram-tool cleanup failed for ${dir}: ${error.message}`); }
+    }
   }
 }
 
@@ -324,80 +327,32 @@ function checkArgsShape(args) {
 // Runs one diagramify command. Resolves {ok:true, receipt} or
 // {ok:false, error, diagnostics} — the CLI prints its JSON receipt on stdout
 // even when it fails, so real diagnostics survive.
-function runCli(cliArgs, signal = null) {
-  return new Promise((resolve) => {
-    const command = cliArgs[0];
-    if (signal?.aborted) {
-      resolve({ ok: false, error: `diagramify ${command} aborted`, diagnostics: [] });
-      return;
-    }
-
-    const child = spawn(process.execPath, [CLI, ...cliArgs], {
-      cwd: REPO_ROOT,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, SUBPROCESS_TIMEOUT_MS);
-
-    const onAbort = () => {
-      child.kill("SIGKILL");
-    };
-    if (signal) {
-      signal.addEventListener("abort", onAbort, { once: true });
-    }
-
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
-
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      resolve({ ok: false, error: `failed to run diagramify ${command}: ${err.message}`, diagnostics: [] });
-    });
-
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      if (signal?.aborted) {
-        resolve({ ok: false, error: `diagramify ${command} aborted`, diagnostics: [] });
-        return;
-      }
-      if (timedOut) {
-        resolve({
-          ok: false,
-          error: `diagramify ${command} timed out after ${SUBPROCESS_TIMEOUT_MS}ms`,
-          diagnostics: [],
-        });
-        return;
-      }
-
-      const receipt = parseJson(stdout);
-      const diagnostics = Array.isArray(receipt?.diagnostics) ? receipt.diagnostics : [];
-      if (code !== 0) {
-        resolve({
-          ok: false,
-          error: receipt?.error || stderr.trim() || `diagramify ${command} exited with code ${code}`,
-          diagnostics,
-        });
-        return;
-      }
-      if (receipt?.ok !== true) {
-        resolve({
-          ok: false,
-          error: receipt?.error || `diagramify ${command} did not report a successful receipt`,
-          diagnostics,
-        });
-        return;
-      }
-      resolve({ ok: true, receipt });
-    });
+async function runCli(cliArgs, signal = null, tempRoot) {
+  const command = cliArgs[0];
+  const run = await runProcessTree({
+    file: process.execPath,
+    args: [CLI, ...cliArgs],
+    cwd: REPO_ROOT,
+    signal,
+    timeoutMs: SUBPROCESS_TIMEOUT_MS,
+    maxOutputBytes: 1024 * 1024,
+    // The vendored validator stages files in os.tmpdir(). Keep those files
+    // under this job so an abort cannot leave its staging directory behind.
+    env: { ...process.env, TMPDIR: tempRoot, TMP: tempRoot, TEMP: tempRoot },
   });
+  if (!run.ok && /abort|timed out|output exceeded/i.test(run.error || "")) {
+    return { ok: false, error: `diagramify ${command} ${run.error}`, diagnostics: [] };
+  }
+  const receipt = parseJson(run.stdout);
+  const diagnostics = Array.isArray(receipt?.diagnostics) ? receipt.diagnostics : [];
+  if (!run.ok) {
+    return { ok: false, error: receipt?.error || run.stderr.trim() || run.error, diagnostics };
+  }
+  if (receipt?.ok !== true) {
+    return { ok: false,
+      error: receipt?.error || `diagramify ${command} did not report a successful receipt`, diagnostics };
+  }
+  return { ok: true, receipt };
 }
 
 function parseJson(text) {
