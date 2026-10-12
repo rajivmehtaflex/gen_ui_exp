@@ -14,12 +14,11 @@ import OpenAI from "openai";
 import { generateSystemPrompt } from "@openuidev/lang-core";
 import { isCannedInteractivePrompt, pickCannedRecipe } from "./canned-recipe.mjs";
 import { diagramModeForPrompt } from "./diagram-policy.mjs";
+import { cannedDiagramReply, runToolLoop } from "./tool-loop.mjs";
 import {
   registerArtifactRoutes,
-  diagramToolDeclaration,
   diagramPromptBlock,
   executeDiagramTool,
-  accumulateToolCalls,
   assistantToolCallChunks,
   toolResultChunk,
 } from "./diagram-tool.mjs";
@@ -131,7 +130,7 @@ app.post("/api/chat", async (req, res) => {
         await new Promise((r) => setTimeout(r, 50));
         write(chunk(id, {
           role: "assistant",
-          content: "I've created an interactive architecture map of the deploy pipeline. You can open and explore it in the artifact panel.",
+          content: cannedDiagramReply(result),
         }));
         write(chunk(id, {}, "stop"));
         write("data: [DONE]\n\n");
@@ -166,105 +165,15 @@ app.post("/api/chat", async (req, res) => {
     const lastUserMsg = messages[messages.length - 1]?.content ?? "";
     const diagramMode = diagramModeForPrompt(lastUserMsg);
 
-    const MAX_ROUNDS = 3;
-    let round = 0;
-    let lastToolResult = null;
-
-    while (round < MAX_ROUNDS) {
-      round++;
-      let toolChoice = "auto";
-      if (round === 1 && diagramMode === "interactive") {
-        toolChoice = { type: "function", function: { name: "create_diagram" } };
-      } else if (round === 1 && diagramMode === "inline") {
-        toolChoice = "none";
-      } else if (lastToolResult && !lastToolResult.ok) {
-        toolChoice = { type: "function", function: { name: "create_diagram" } };
-      } else if (lastToolResult && lastToolResult.ok) {
-        toolChoice = "none";
-      }
-
-      const stream = await client.chat.completions.create(
-        {
-          model: MODEL,
-          messages: conversationMessages,
-          tools: [diagramToolDeclaration],
-          tool_choice: toolChoice,
-          stream: true,
-        },
-        { signal: abort.signal },
-      );
-
-      const toolDeltas = [];
-      let finishReason = null;
-      let assistantText = "";
-
-      for await (const part of stream) {
-        if (closed) break;
-        write(`data: ${JSON.stringify(part)}\n\n`);
-
-        const choice = part.choices?.[0];
-        if (choice?.delta?.content) {
-          assistantText += choice.delta.content;
-        }
-        if (choice?.delta?.tool_calls) {
-          toolDeltas.push(choice.delta.tool_calls);
-        }
-        if (choice?.finish_reason) {
-          finishReason = choice.finish_reason;
-        }
-      }
-
-      if (closed) break;
-
-      if (finishReason !== "tool_calls") {
-        break;
-      }
-
-      const toolCalls = accumulateToolCalls(toolDeltas);
-      if (toolCalls.length === 0) {
-        break;
-      }
-
-      conversationMessages.push({
-        role: "assistant",
-        content: assistantText || null,
-        tool_calls: toolCalls.map((tc) => ({
-          id: tc.id,
-          type: "function",
-          function: { name: tc.name, arguments: tc.arguments },
-        })),
-      });
-
-      const createDiagramCall = toolCalls.find((tc) => tc.name === "create_diagram") || toolCalls[0];
-      const result = await executeDiagramTool(createDiagramCall.arguments, abort.signal);
-      if (closed) break;
-
-      write(toolResultChunk({
-        toolCallId: createDiagramCall.id,
-        content: JSON.stringify(result),
-      }, MODEL));
-
-      conversationMessages.push({
-        role: "tool",
-        tool_call_id: createDiagramCall.id,
-        content: JSON.stringify(result),
-      });
-
-      lastToolResult = result;
-
-      if (result.ok) {
-        continue;
-      }
-
-      if (round >= MAX_ROUNDS) {
-        const diagMsg = result.diagnostics?.[0]?.message || result.error || "diagram specification failed validation";
-        write(chunk(id, {
-          role: "assistant",
-          content: `\n\nI couldn't produce a valid diagram — ${diagMsg}.`,
-        }, "stop"));
-        break;
-      }
-    }
+    await runToolLoop({
+      messages: conversationMessages,
+      createCompletion: (request, options) => client.chat.completions.create(request, options),
+      executeTool: executeDiagramTool,
+      emit: write,
+      signal: abort.signal,
+      model: MODEL,
+      initialMode: diagramMode,
+    });
 
     write("data: [DONE]\n\n");
     return res.end();
