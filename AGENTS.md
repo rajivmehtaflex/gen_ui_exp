@@ -1,32 +1,32 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Structure
 
-- `src/` contains the Vite/React client. `src/App.tsx` mounts OpenUI’s chat shell; `src/library/chat-library.ts` defines the shared component library and model prompt guidance.
-- `src/library/diagrams/` holds diagram schemas, React renderers, and pure layout helpers. Keep layout math separate from React where practical.
-- `server/` contains the Express chat endpoint and canned OpenUI recipes. `generated/chat-library.spec.json` is derived from the client library and consumed by the server.
-- `scripts/` contains spec generation, recipe/example validators, layout and library checks, and live smoke utilities. `RUNBOOK.md` documents local operation; `PLAN-STAGE1-DIAGRAMS.md` records the diagram work.
+- `src/` is the Vite/React client: `src/App.tsx` mounts `AgentInterface`; `src/library/chat-library.ts` composes OpenUI built-ins, eight diagram components, and prompt guidance.
+- `src/library/diagrams/` holds component schemas, React renderers, and pure layout helpers. Keep layout logic separate from rendering where practical.
+- `server/` contains the Express streaming chat route, canned recipes, and project diagram fixtures in `examples/diagrams/`. `server/vendor/diagramify/` contains the vendored CLI, schemas, renderers, and upstream license.
+- `generated/chat-library.spec.json` is derived from the client library and consumed by the server. `scripts/` contains generation and checks; `RUNBOOK.md` covers local operation; `docs/superpowers/{specs,plans}/` holds design notes and plans.
 
 ## Architecture Contract
 
-The browser renderer and server prompt must use the same component library. After changing `src/library/`, run `npm run gen:spec`; commit the refreshed generated spec with the source. Never hand-edit the generated JSON. Keep recipe examples and canned recipes valid against the current schema.
+The browser renderer and server prompt must use the same library. After any `src/library/` change, run `npm run gen:spec` and commit the refreshed spec; never hand-edit generated JSON. Keep canned recipes and prompt examples schema-valid. `npm run check:diagram` validates fixtures through the vendored CLI; preserve its license when updating vendor files.
 
-## Build, Test, and Development Commands
+## Build and Development
 
-- `npm install` installs dependencies; `npm run dev` starts Express and Vite together (Vite serves port 5173 and proxies `/api` to port 8787).
-- `npm run build` runs TypeScript checks and creates the production bundle; `npm run preview` serves that bundle locally.
-- `npm run gen:spec` refreshes the server library spec; `npm run check:spec` detects stale output.
-- `npm run check:recipe` and `npm run check:examples` validate canned recipes and prompt examples.
-- `npm run test:library` checks component signatures and parser contracts; `npm run test:layout` checks diagram layout behavior. Run `node scripts/test-error-visibility.mjs` for server error handling.
+- Use Node 20+ and `npm install`; copy `.env.example` to `.env` for live model access. `npm run dev` starts Express on port 8787 and Vite on port 5173 (proxying `/api`).
+- `npm run build` type-checks and creates the production bundle; `npm run preview` serves it locally.
+- `npm run gen:spec` writes the generated library contract; `npm run check:spec` checks that it is current.
 
-## Coding Style & Naming
+## Tests and Validation
 
-Use strict TypeScript, ESM imports, two-space indentation, double quotes, and semicolons, matching nearby files. Name React components and OpenUI components in `PascalCase`, functions and variables in `camelCase`, and environment variables in `UPPER_SNAKE_CASE`. There is no configured formatter or linter script; keep changes consistent with adjacent code.
+This repository uses standalone scripts, not a test framework. `npm run check:recipe`, `npm run check:examples`, and `npm run check:diagram` validate recipes, prompt examples, and seven diagram fixtures; `npm run test:library` and `npm run test:layout` check component contracts and layout. For renderer geometry run `npx tsx scripts/test-diagram-render.mjs`; for server error handling run `node scripts/test-error-visibility.mjs`. Use `npm run build` for client or type changes. `node scripts/live-smoke.mjs [baseUrl] [prompt] [runs]` exercises a running server.
 
-## Testing Guidelines
+## Style, Commits, and Configuration
 
-Checks are standalone Node/tsx scripts rather than a test framework. Run the checks relevant to changed code, plus `npm run build` for client or type changes. For library or prompt edits, regenerate the spec and run both schema validators.
+Use strict TypeScript, ESM imports, two-space indentation, double quotes, and semicolons. Use `PascalCase` for React/OpenUI components, `camelCase` for functions and variables, and `UPPER_SNAKE_CASE` for environment variables. No formatter or linter is configured.
 
-## Commits, Pull Requests, and Configuration
+Recent commits use short Conventional Commit-style subjects such as `feat(vendor): ...`, `fix(diagrams): ...`, `test(live): ...`, and `docs: ...`. PRs should explain behavior, list checks, link issues, and include screenshots for visual changes. Keep provider keys server-side; never commit `.env`. The demo has no authentication or persistent chat storage.
 
-Recent history uses short Conventional Commit-style subjects such as `feat(diagrams): ...`, `test(live): ...`, and `docs: ...`. PRs should explain user-visible behavior, list checks run, link related issues when applicable, and include screenshots for visual changes. Copy `.env.example` to `.env`; keep provider keys server-side and never commit `.env`. This demo has no authentication or persistent chat storage.
+## Codebase Exploration & Analysis
+
+This repository is indexed with CodeGraph (`.codegraph/`). Always use the CodeGraph MCP server (`codegraph_explore`) or the shell CLI (`codegraph explore "<query>"`) as the primary method to study, explore, and analyze the codebase architecture and symbols before falling back to manual file inspections or grep.
