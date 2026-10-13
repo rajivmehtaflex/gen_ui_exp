@@ -153,11 +153,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Produce `createDiagramLimiter(maxActive: number)` with `tryAcquire(): (() => void)|null`; release callback is idempotent. Produce `createSseWriter(res,{signal,maxPendingBytes}): {write(s:string):Promise<void>,close():void}`. Produce `createRequestDeadline(parentSignal,timeoutMs): {signal,dispose():void}`. T3 awaits emit promises; T7 receives combined abort signal.
 
-- [ ] Add `two_jobs_only` asserting third admission returns a structured busy result without spawn, and slots release on every failure. Add `slow_reader_bounds_memory`, `disconnect_during_drain`, `deadline_aborts_upstream_and_cli`, and `tool_argument_budget`; use fake response/clock, and require terminal diagnostics instead of truncated success.
-- [ ] Run `node scripts/test-resource-limits.mjs`; confirm missing admission/deadline/backpressure behavior fails.
-- [ ] Apply 2 active jobs, no queue, 120-second whole request deadline, 2 MiB aggregate text/tool argument bytes and 256 KiB pending SSE budget. Respect write(false)/drain; settle on close/error/abort with no hanging promise. Keep admission spanning validate/deliver and release in finally. Budget errors must be visible and use T2 termination.
-- [ ] Run resource, process, tool-loop and wire scripts; require all offline cases to settle with zero outstanding handles owned by the harness.
-- [ ] Commit with `fix(server): bound diagram jobs and streaming resources`.
+- [x] Add `two_jobs_only` asserting third admission returns a structured busy result without spawn, and slots release on every failure. Add `slow_reader_bounds_memory`, `disconnect_during_drain`, `deadline_aborts_upstream_and_cli`, and `tool_argument_budget`; use fake response/clock, and require terminal diagnostics instead of truncated success.
+- [x] Run `node scripts/test-resource-limits.mjs`; confirm missing admission/deadline/backpressure behavior fails.
+- [x] Apply 2 active jobs, no queue, 120-second whole request deadline, 2 MiB aggregate text/tool argument bytes and 256 KiB pending SSE budget. Respect write(false)/drain; settle on close/error/abort with no hanging promise. Keep admission spanning validate/deliver and release in finally. Budget errors must be visible and use T2 termination.
+- [x] Run resource, process, tool-loop and wire scripts; require all offline cases to settle with zero outstanding handles owned by the harness.
+- [x] Commit with `fix(server): bound diagram jobs and streaming resources`.
 
 ### Task 10: Normalize inline bounds, geometry and readable content (G15–G17)
 
@@ -177,11 +177,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Extend successful tool result to `{ok:true,diagramId,title,type,sha256,bytes}` with SHA-256 of the actual UTF-8 HTML. Extract `verifyDiagramRun({events,artifactResponse}): {ok:boolean,errors:string[]}` in `scripts/diagram-smoke-contract.mjs` (create this file); correlate successful final tool results by id across retries. Consume T8 artifact metadata and T2/T3 completion shapes.
 
-- [ ] Add `wrong_digest_fails`, `wrong_bytes_fails`, `unrelated_tool_fails`, `failed_result_fails`, `missing_done_fails`, `valid_retry_then_success_passes`, `parse_errors_with_svg_fail`, and `group_name_without_example_fails`. Use local fixtures, no provider. Require assertions for HTML content type, nosniff/no-store, correlation, result ok, full digest and byte count.
-- [ ] Run `node scripts/test-smoke-gates.mjs`; confirm current permissive conditions fail the checks.
-- [ ] Compute digest from actual delivered bytes; compare it with vendor receipt where available and reject disagreement. Expose small receipt fields, update smoke to compare fetched bytes/digest, and bound smoke fetches at 120 seconds. Gate check-render on parse cleanliness and expected family markup; gate prompt example coverage on parsed components in examples. Ensure live text smoke requires completed nonblank Card output, not just absence of parser errors.
-- [ ] Run smoke-gate, tool, recipe and example scripts. Against a keyless local server, require inline and interactive smoke commands to exit 0. Live runs remain opt-in; report mode/model and actual run counts, and do not reuse historical baseline as proof.
-- [ ] Commit with `test(smoke): verify tool receipts completion and real render contracts`.
+- [x] Add `wrong_digest_fails`, `wrong_bytes_fails`, `unrelated_tool_fails`, `failed_result_fails`, `missing_done_fails`, `valid_retry_then_success_passes`, `parse_errors_with_svg_fail`, and `group_name_without_example_fails`. Use local fixtures, no provider. Require assertions for HTML content type, nosniff/no-store, correlation, result ok, full digest and byte count.
+- [x] Run `node scripts/test-smoke-gates.mjs`; confirm current permissive conditions fail the checks.
+- [x] Compute digest from actual delivered bytes; compare it with vendor receipt where available and reject disagreement. Expose small receipt fields, update smoke to compare fetched bytes/digest, and bound smoke fetches at 120 seconds. Gate check-render on parse cleanliness and expected family markup; gate prompt example coverage on parsed components in examples. Ensure live text smoke requires completed nonblank Card output, not just absence of parser errors.
+- [x] Run smoke-gate, tool, recipe and example scripts. Against a keyless local server, require inline and interactive smoke commands to exit 0. Live runs remain opt-in; report mode/model and actual run counts, and do not reuse historical baseline as proof.
+- [x] Commit with `test(smoke): verify tool receipts completion and real render contracts`.
 
 ### Task 12: Make checks hermetic and enforceable (G19, G20, G23)
 
@@ -189,11 +189,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Produce `startTestServer({mode,env}): Promise<{baseUrl,child,stop():Promise<void>}>` that clears provider env, allocates an isolated port and proves readiness belongs to its child. Root npm scripts explicitly use tsx for TS/TSX imports. Browser harness uses an explicitly pinned browser automation development dependency; choose Playwright and install its Chromium in the browser CI job.
 
-- [ ] Add `parent_env_does_not_change_mode` with synthetic parent config and `occupied_port_not_accepted` against a decoy healthy server. Assert child exits and captured output is drained. Confirm a clean Node 20 invocation of the documented wire/artifact check uses tsx rather than native TS handling.
-- [ ] Run harness and error tests before repair; confirm configuration/readiness assertions fail.
-- [ ] Declare `@openuidev/react-headless` directly at a version compatible with the currently installed OpenUI packages, update lockfile through npm, add `engines.node >=20`, and add npm entries for every offline check. `verify.mjs` runs spec/recipe/examples/diagram/library/layout/render/tool/wire/artifact/input/loop/process/store/resource/prompt/routing/smoke/harness checks and build sequentially, stops on nonzero, and never invokes paid live smoke. Add a separate `test:browser` entry for T4/T5 browser checks.
-- [ ] Add CI with clean `npm ci`, Node 20/24 offline gates and a Chromium browser job. Run focused harness/error checks, then `npm run verify` and `npm run test:browser`; require zero failed checks. Track any browser installation need explicitly; do not claim a skipped browser check passed.
-- [ ] Commit with `test(ci): enforce hermetic checks and supported node tooling`.
+- [x] Add `parent_env_does_not_change_mode` with synthetic parent config and `occupied_port_not_accepted` against a decoy healthy server. Assert child exits and captured output is drained. Confirm a clean Node 20 invocation of the documented wire/artifact check uses tsx rather than native TS handling.
+- [x] Run harness and error tests before repair; confirm configuration/readiness assertions fail.
+- [x] Declare `@openuidev/react-headless` directly at a version compatible with the currently installed OpenUI packages, update lockfile through npm, add `engines.node >=20`, and add npm entries for every offline check. `verify.mjs` runs spec/recipe/examples/diagram/library/layout/render/tool/wire/artifact/input/loop/process/store/resource/prompt/routing/smoke/harness checks and build sequentially, stops on nonzero, and never invokes paid live smoke. Add a separate `test:browser` entry for T4/T5 browser checks.
+- [x] Add CI with clean `npm ci`, Node 20/24 offline gates and a Chromium browser job. Run focused harness/error checks, then `npm run verify` and `npm run test:browser`; require zero failed checks. Track any browser installation need explicitly; do not claim a skipped browser check passed.
+- [x] Commit with `test(ci): enforce hermetic checks and supported node tooling`.
 
 ### Task 13: Record vendor provenance and reproducible derived assets (G21)
 
@@ -201,11 +201,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Manifest records source repository, exact revision or verifiable source artifact digest, package version, copied files and SHA-256 values; distinguish intentionally patched files from pristine copies. Generated validators must remain compatible with the shipped schemas and output format; generated brands must have real catalog inputs. Consume T5 patch record.
 
-- [ ] Add `vendor_manifest_covers_subset`, `schema_change_detects_stale_validator`, `brand_inputs_reproduce_catalog`, and `missing_generator_is_actionable`. Require LICENSE and patch inventory; compare generated output byte-for-byte in a temporary directory before replacement.
-- [ ] Run `node scripts/check-vendor.mjs`; confirm missing provenance/regeneration inputs fail with specific messages.
-- [ ] Obtain source identity from authoritative original package metadata/repository history; never invent a revision. If exact upstream identity cannot be recovered, record that fact plus current-tree checksums, locate the authoritative source before replacing vendor code, and leave provenance acceptance open. Import the real generator dependencies/inputs with compatible pinned versions, or explicitly document a reproducible approved subset generator rather than pretend absent upstream test suites are available.
-- [ ] Re-run vendor, seven-fixture CLI and artifact/browser checks; require reproducible derived files and no unrecorded vendor modifications. Add `check:vendor` to the offline aggregate.
-- [ ] Commit with `chore(vendor): document source subset and reproducible assets`.
+- [x] Add `vendor_manifest_covers_subset`, `schema_change_detects_stale_validator`, `brand_inputs_reproduce_catalog`, and `missing_generator_is_actionable`. Require LICENSE and patch inventory; compare generated output byte-for-byte in a temporary directory before replacement.
+- [x] Run `node scripts/check-vendor.mjs`; confirm missing provenance/regeneration inputs fail with specific messages.
+- [x] Obtain source identity from authoritative original package metadata/repository history; never invent a revision. If exact upstream identity cannot be recovered, record that fact plus current-tree checksums, locate the authoritative source before replacing vendor code, and leave provenance acceptance open. Import the real generator dependencies/inputs with compatible pinned versions, or explicitly document a reproducible approved subset generator rather than pretend absent upstream test suites are available.
+- [x] Re-run vendor, seven-fixture CLI and artifact/browser checks; require reproducible derived files and no unrecorded vendor modifications. Add `check:vendor` to the offline aggregate.
+- [x] Commit with `chore(vendor): document source subset and reproducible assets`.
 
 ### Task 14: Reconcile operation docs and finish acceptance (G22)
 
@@ -213,11 +213,11 @@ Every task is independently reviewable. The standalone regression scripts below 
 
 **Interfaces:** Documentation names the actual custom adapter/app library, required env initialization and model setting, supported Node version, new verification entrypoints, hybrid routing, retention and failure states. Acceptance record maps all G01–G24 to commits and observed checks.
 
-- [ ] Check docs against package scripts and current implementation. Record contradictory adapter/library/default-model/out-of-scope statements and missing `.env` setup before rewriting.
-- [ ] Update quickstart to `npm ci`, `cp .env.example .env`, `npm run dev`; explain empty-key canned mode and key+model live mode. Document production server startup after build, actual artifact exports/isolation, expiry, saturation and diagnostics. Remove stale phase assertions; label historical baselines as historical.
-- [ ] Execute the full offline gate and browser suite once on the finished branch; require exit 0 and record counts/versions. Use keyless e2e for inline and artifact paths. If live access is available and authorized, run the existing 3-run smoke per type; record each actual result and hashes. If not, mark live baseline pending rather than fabricate success.
-- [ ] Audit the gap table against every acceptance result, including failure-path checks and vendor provenance. Leave any unproved task unchecked and describe the exact blocker. Run `git diff --check` and inspect staged paths for unrelated user changes.
-- [ ] Commit docs with `docs: align runbook and record gap remediation evidence`; provide acceptance and plan paths for final review. Branch integration is a separate action.
+- [x] Check docs against package scripts and current implementation. Record contradictory adapter/library/default-model/out-of-scope statements and missing `.env` setup before rewriting.
+- [x] Update quickstart to `npm ci`, `cp .env.example .env`, `npm run dev`; explain empty-key canned mode and key+model live mode. Document production server startup after build, actual artifact exports/isolation, expiry, saturation and diagnostics. Remove stale phase assertions; label historical baselines as historical.
+- [x] Execute the full offline gate and browser suite once on the finished branch; require exit 0 and record counts/versions. Use keyless e2e for inline and artifact paths. If live access is available and authorized, run the existing 3-run smoke per type; record each actual result and hashes. If not, mark live baseline pending rather than fabricate success.
+- [x] Audit the gap table against every acceptance result, including failure-path checks and vendor provenance. Leave any unproved task unchecked and describe the exact blocker. Run `git diff --check` and inspect staged paths for unrelated user changes.
+- [x] Commit docs with `docs: align runbook and record gap remediation evidence`; provide acceptance and plan paths for final review. Branch integration is a separate action.
 
 ## Finding coverage and execution handoff
 
@@ -237,6 +237,6 @@ Every task is independently reviewable. The standalone regression scripts below 
 | G21 | T13 |
 | G22 | T14 |
 
-Self-review completed for this planning artifact: each of 24 findings has a task; interface names and dependencies align; all five Review Focus conditions have owning checks; resource defaults match the repair design; browser/live/provenance uncertainty is explicit. Task checkboxes are intentionally open because no fixes have been implemented.
+Self-review completed for this planning artifact: each of 24 findings has a task; interface names and dependencies align; all five Review Focus conditions have owning checks; resource defaults match the repair design; browser/live/provenance uncertainty is explicit. Tasks T1–T14 are complete; see [the acceptance record](../reviews/2026-10-12-remediation-acceptance.md) for commit and check evidence. Live-provider smoke remains pending as recorded there.
 
-Recommended execution is native sequential implementation because tool-loop, adapter and resource tasks share interfaces. Review this saved proposal and its defaults before choosing an execution method. The review-and-plan request is fulfilled by these documents; implementing the plan is subsequent work.
+Recommended execution is native sequential implementation because tool-loop, adapter and resource tasks share interfaces. Review this saved proposal and its defaults before choosing an execution method. The review, plan, implementation, and acceptance record are complete. Branch integration remains separate.
