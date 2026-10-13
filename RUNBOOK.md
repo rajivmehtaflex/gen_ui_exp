@@ -1,149 +1,133 @@
-# gen_ui_exp — Runbook
+# gen_ui_exp runbook
 
-Phase #1 hello-world, self-hosted Generative UI: **built-in chat shell (`AgentInterface`) + built-in components (`openuiChatLibrary`) + your own OpenRouter key**. No Gateway, no custom components, no theming, no auth, no persistence — later phases.
+This repository runs a React generative UI client and an Express chat API. The browser uses the repository's custom `appChatLibrary`, an OpenUI component library with the built-in chat components and eight diagram components. Interactive diagrams use a separate `create_diagram` tool and the vendored `diagramify` CLI.
 
-## The whole app in one breath
+## Architecture
 
-The server generates a **briefing pack** once (`generateSystemPrompt` over the serialized
-library — "the menu"), and exposes one route, `POST /api/chat`. The browser runs the
-**chat shell + parser + renderer**. The model (OpenRouter, or a canned recipe when no key
-is set) streams back **OpenUI Lang** — `root = Card(...)` first, children after. The
-browser parses each line as it lands and renders live UI. Every part of that sentence
-maps to a real file:
-
-| Course concept | File |
+| Responsibility | Implementation |
 |---|---|
-| The menu, serialized | `generated/chat-library.spec.json` (run `npm run gen:spec`) |
-| Briefing pack writer | `server/chat.mjs` (`generateSystemPrompt` at startup) |
-| The chef | OpenRouter via `openai` SDK (`baseURL` override) — or `server/canned-recipe.mjs` when no key |
-| The recipe | `server/canned-recipe.mjs` (validated by `scripts/validate-recipe.mjs`) |
-| The waiter (pipe 1: llm) | `src/llm.ts` (`fetchLLM` + `openAIAdapter` + `openAIMessageFormat`) |
-| The dining room | `src/App.tsx` (`AgentInterface` + `openuiChatLibrary`) |
-| Pipe 2 (storage) | deliberately omitted → threads are in-memory for now |
+| Browser shell | `src/App.tsx` mounts `AgentInterface`, `appChatLibrary`, `llm`, and `diagramArtifactRenderer`. |
+| Inline UI library | `src/library/chat-library.ts` composes built-ins, eight diagram components, and prompt examples/rules. |
+| Generated server contract | `scripts/gen-spec.ts` serializes the library and prompt options to `generated/chat-library.spec.json`; `server/chat.mjs` uses it to build the system prompt. |
+| Browser stream handling | `src/llm.ts` uses `fetchLLM`, `openAIMessageFormat`, and this app's `chatAdapter` to translate OpenAI-style SSE into OpenUI events. The adapter closes message/tool events on terminal frames and reports malformed or interrupted streams. |
+| Chat and routing | `server/chat.mjs` validates request history, selects canned or live mode, and streams responses. `server/diagram-policy.mjs` shares inline, interactive, or automatic diagram intent routing across modes. |
+| Interactive diagram tool | `server/tool-loop.mjs` runs bounded provider/tool rounds. `server/diagram-tool.mjs` validates and delivers specs through `server/vendor/diagramify/bin/diagramify.mjs`, stores the HTML, and serves artifact routes. |
+| Artifact viewer | `src/artifacts/diagram-artifact-view.tsx` checks availability and renders a sandboxed iframe. The viewer supports pan/zoom, theme, relationship tracing, and SVG/PNG download. |
 
-## Run it on your machine
+`FlowDiagram`, `FlowNode`, `FlowEdge`, `SequenceDiagram`, `Participant`, `Message`, `StepExplainer`, and `ExplainerStep` are the eight custom components. Their contracts and examples live under `src/library/diagrams/` and `src/library/chat-library.ts`.
 
-Prereqs: **Node 20+** (developed on Node 24), npm.
+After changing `src/library/`, run `npm run gen:spec` and commit the refreshed generated contract. Do not hand-edit `generated/chat-library.spec.json`.
 
-```bash
-npm install
-cp .env.example .env        # then paste YOUR key into OPENROUTER_API_KEY (never share it in chat)
+## Install and run
+
+Requirements: Node.js 20 or later and npm.
+
+```sh
+npm ci
+cp .env.example .env
 npm run dev
 ```
 
-Open **http://localhost:5173**.
+Open <http://localhost:5173>. Vite serves the client and proxies `/api` to Express on port 8787. The `.env` file is git-ignored; keep provider credentials there, never in client code.
 
-- **No key in `.env`?** Canned mode: send any message → the validated hello-world card
-  streams in line by line and renders. Zero cost, works offline from the model.
-- **Key set?** Live mode: type anything ("show my Q4 sales as a dashboard") → OpenRouter
-  writes a fresh recipe from the same menu, streams, renders live. Watch it build itself.
+### Modes and configuration
 
-OpenRouter keys: https://openrouter.ai/keys — server-side only, never bundled. The model
-id lives in `.env` (`OPENROUTER_MODEL`; default is a free-tier model — any id from
-https://openrouter.ai/models works).
+- **Canned mode:** leave `OPENROUTER_API_KEY` empty. The server streams a validated sample card or inline diagram recipe. Prompts routed as interactive run the real validate/deliver tool using a checked-in fixture, so this path works without a provider key.
+- **Live mode:** set both `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`. A key without a nonempty model makes the server exit at startup with a clear message. `OPENROUTER_BASE_URL` can point to an OpenRouter-compatible endpoint; the default is `https://openrouter.ai/api/v1`.
+- `PORT` selects the Express port and defaults to `8787`. The example `.env` includes a sample model id; the server does not apply that model as a fallback when the variable is empty.
 
-## The diagram vocabulary (Stage 1 custom components)
+`diagramModeForPrompt` chooses among:
 
-`src/library/` extends `openuiChatLibrary` with 8 components — the ONE library
-both the briefing pack and the renderer use:
+- **inline:** keep the answer in the chat's inline UI stream and disable diagram tool calls for the initial live completion.
+- **interactive:** request the `create_diagram` tool. The result appears in the artifact panel.
+- **auto:** let the live model choose; canned mode uses a matching sample recipe for ordinary requests.
 
-| Family | Signature (positional order) |
-|---|---|
-| `FlowDiagram` | `(nodes: FlowNode[], edges: FlowEdge[], direction?: "TB"\|"LR")` |
-| `FlowNode` | `(id: string, label: string, kind?: "process"\|"start"\|"end"\|"decision"\|"input"\|"store")` |
-| `FlowEdge` | `(from: string, to: string, label?: string)` — ids must match FlowNodes |
-| `SequenceDiagram` | `(participants: Participant[], messages: Message[])` |
-| `Participant` | `(id: string, label: string)` |
-| `Message` | `(from: string, to: string, label: string, kind?: "sync"\|"async"\|"return")` |
-| `StepExplainer` | `(steps: ExplainerStep[])` — concept walkthroughs, not task lists |
-| `ExplainerStep` | `(title: string, body?: string, code?: string, note?: string)` |
+These are routing hints, not a guarantee that every arbitrary prompt produces a diagram. The canned fixtures are deterministic samples, not model-generated answers.
 
-Try: *"Show a CI/CD pipeline as a flow diagram"* · *"Diagram the checkout request
-lifecycle as a sequence diagram"* · *"Explain how HTTP caching works step by step"*.
-No key? Canned mode routes diagram-ish prompts to validated showcase recipes.
+### Production startup
 
-**Live baseline (2026-10-11, `nvidia/nemotron-3-super-120b-a12b:free` via OpenRouter,
-3 prompts × 3 runs, `live-smoke <url> "<prompt>" 3`):** flow **3/3** · sequence **3/3**
-· explainer **3/3** clean parses (0 structural errors). Phase #1's built-in-only
-baseline was 2/3 on one prompt — the canonical examples + rules measurably helped.
-Re-measure after any library/prompt change; never judge from a single run.
+The server serves the built client whenever `dist/` exists. Build first, then start the API/UI server:
 
-## Interactive Diagram Artifacts (Stage 2)
+```sh
+npm ci
+cp .env.example .env
+# Set both OPENROUTER_API_KEY and OPENROUTER_MODEL for live mode.
+npm run build
+node --env-file=.env server/chat.mjs
+```
 
-When an ask calls for a rich, explorable diagram (pan/zoom, relationship tracing, export), the system generates standalone interactive HTML via the vendored `diagramify` runtime and serves it into `AgentInterface`'s artifact panel in a sandboxed iframe.
+Open <http://localhost:8787>. The Express process serves `dist/`, `/api/chat`, health, and artifact routes on the same origin. `npm run dev` is for development; it starts Express with Node's watch mode and starts Vite separately. `npm run preview` is Vite's client preview, not the full-stack production command.
 
-### The 6 supported types
-- `architecture`: system components, boundaries, services, deployments
-- `workflow`: business processes, human-in-the-loop flows, multi-stage procedures
-- `sequence`: request lifecycles, protocol handshakes, distributed messaging
-- `dataflow`: data transformations, pipelines, ETL stages, ingestion
-- `lifecycle`: entity states, state transitions, domain object phases
-- `explainer-steps`: multi-step conceptual walkthroughs, technical mechanics
+## API and resource limits
 
-### Try it
-- Live prompt: *"Diagram our deploy pipeline as an interactive architecture map"*
-- Canned prompt: *"build an interactive diagram of a deploy pipeline"* (or any prompt matching `/interactive|explorable/`) — routes to the real validate+deliver tool pipeline keylessly.
+`POST /api/chat` accepts user/assistant/tool conversation history. The server validates it before opening an SSE response. It accepts at most 100 messages and a 1 MiB JSON request body; invalid histories return JSON 400 and oversized bodies return JSON 413.
 
-### Verification gates & Smoke testing
-1. `npm run check:diagram` — runs showcase validation across all 7 fixtures under `server/examples/diagrams/`.
-2. `node scripts/live-diagram-smoke.mjs [baseUrl] ["prompt"] [runs]` — end-to-end smoke test sending the prompt, asserting tool call creation, delivery, and artifact retrieval (`GET /api/artifacts/:id` -> 200 `text/html`).
+Live chat uses a bounded tool loop: at most three diagram executions per request, followed by a final completion. Diagram rendering has a two-job process-wide limit and no queue; a saturated request gets a structured busy failure. Each request has a 120-second overall deadline. Accumulated model text and tool arguments share a 2 MiB budget, and pending SSE data is capped at 256 KiB. Oversized frames stop visibly instead of being silently dropped. Client disconnects and deadlines abort provider work and diagram subprocess trees.
 
-**Live baseline (2026-10-12, `nvidia/nemotron-3-super-120b-a12b:free` via OpenRouter, 3 runs):**
-`toolCalls 3/3 · artifactsOK 3/3` (100% clean passes, artifact HTML size ~716 kB).
+The browser stream adapter exposes server and upstream failures in the chat. A failed diagram result carries an error and available renderer diagnostics; the artifact panel shows a failure state rather than a blank preview.
 
-### Stage 2 Troubleshooting
-- **Model validation failures**: if the model produces an invalid spec, the server relays the exact diagnostics JSON back to the model for up to 2 self-correction retries before honestly reporting the error.
-- **Missing / 404 artifacts on reload**: the artifact registry is an in-memory `Map` by design (matching in-memory chat threads). Stale artifacts disappear on server restart.
-- **Client disconnect / abort**: if a user navigates away or disconnects mid-deliver, the server terminates child `diagramify` subprocesses immediately to prevent orphaned processes.
+## Interactive diagram artifacts
 
-## Scripts
+The supported `diagramify` types are `architecture`, `workflow`, `sequence`, `dataflow`, `lifecycle`, and `explainer-steps`. The tool validates each spec at showcase quality, renders standalone HTML, hashes the delivered UTF-8 bytes, and returns an id plus digest/byte receipt.
 
-| Command | What it does |
-|---|---|
-| `npm run dev` | server (`:8787`) + Vite (`:5173`, proxies `/api`) together |
-| `npm run build` | type-check + production build |
-| `npm run gen:spec` | re-serialize the library (via tsx) → `generated/chat-library.spec.json`. **Run this whenever you touch `src/library/`** — prompt and renderer must stay in sync |
-| `npm run check:spec` | exit 1 if the committed spec is stale vs the library (spec-sync gate) |
-| `npm run check:recipe` | parse ALL canned recipes against the real schema; 0 errors required |
-| `npm run check:diagram` | validate all 7 fixture specs against showcase quality using vendored diagramify |
-| `npm run check:examples` | parse every prompt example against the real schema; 0 errors required |
-| `npm run test:library` | library contract: 84 built-ins + 8 diagram components, exact signatures, parser gates |
-| `npm run test:layout` | diagram layout math: finite/in-bounds/deterministic, dangling refs dropped |
-| `npm run verify` | the whole offline gate in one sequential run: every check below (plus tool/wire/artifact/input/loop/process/store/resource/prompt/routing/smoke-gates/harness/error), then the keyless canned smoke pair + flow render gate against a harness-started server, then the build. Stops at the first failing check; clears `OPENROUTER_*` env for every child, so it can never run a paid live smoke |
-| `npm run test:browser` | the three Playwright checks (artifact panel, artifact isolation, diagram render geometry). **Needs a browser**: install Chromium once with `npx playwright install chromium` (pinned `playwright` devDependency). Deliberately NOT part of `npm run verify`; CI has a dedicated job that installs Chromium first |
-| `node scripts/test-harness.mjs` | the hermetic test-server harness itself: `startTestServer` (isolated port, provider env cleared, readiness proved to belong to its child) plus its behavioral checks (parent env cannot change mode, occupied port is never adopted, child exit is reported with drained output, stop releases the port) |
+Artifacts are stored in memory with these limits:
 
-**The regeneration loop:** edit `src/library/` → `npm run gen:spec` → the dev
-server restarts on the changed spec (`--watch`) → Vite hot-reloads the client.
+- 100 entries maximum;
+- 64 MiB total HTML;
+- 2 MiB per artifact;
+- one-hour TTL measured from creation, not last access.
 
+When a count or byte limit is exceeded, the oldest entries are evicted. Expired, evicted, and post-restart artifacts return 404. The panel checks availability and offers a retry for transient fetch failures.
 
-## How to verify it's working (and stay honest about it)
+`GET /api/artifacts/:id` serves HTML with `nosniff`, `no-store`, and a restrictive CSP sandbox. The iframe uses `sandbox="allow-scripts allow-downloads"`, which gives it an opaque origin and permits the viewer's SVG/PNG downloads while blocking parent access. The vendor TOC patch uses DOM text APIs for titles and section numbers. See `server/vendor/diagramify/VENDOR.md` and run `npm run check:vendor` to verify its source inventory and reproducible generated assets.
 
-1. `curl -s localhost:8787/api/health` → `{"mode":"canned"|"live", ...}` — which mode am I in?
-2. Send a message in canned mode → the card streams progressively (no spinner).
-3. Browser DevTools → Network → `/api/chat` → see `data: {...}` SSE chunks; the OpenUI
-   DevTools widget auto-mounts in dev to inspect the settled stream.
-4. `npm run check:recipe` → 0 errors (the same gate any model output should face).
+## Verification
+
+### Offline gates
+
+```sh
+npm ci
+npm run verify
+```
+
+`npm run verify` runs the 20 standalone checks (spec, recipe, examples, seven diagram fixtures, library, layout, tool, wire, artifact renderer, input, loop, process, store, resource, prompt, routing, smoke contracts, vendor, harness, and error visibility). It then starts a harness-owned keyless server for text smoke, interactive artifact smoke, and a flow render gate, and finishes with the build. It stops on the first error, clears provider variables for child processes, and never invokes a paid live smoke.
+
+Useful focused commands include `npm run check:vendor`, `npm run check:diagram`, `npm run test:tool`, `npm run test:wire`, and `npm run test:resource`.
+
+### Browser checks
+
+Install the pinned Playwright Chromium once, then run the browser suite:
+
+```sh
+npx playwright install chromium
+npm run test:browser
+```
+
+The suite covers artifact-panel lifecycle/download behavior, direct artifact sandbox and hostile-TOC behavior, and inline diagram geometry/accessibility/mobile scrolling. Browser checks are intentionally separate from `npm run verify`; CI runs them in a job that installs Chromium first.
+
+### Optional live smoke
+
+The scripts `node scripts/live-smoke.mjs [baseUrl] [prompt] [runs]` and `node scripts/live-diagram-smoke.mjs [baseUrl] [prompt] [runs]` call the configured live provider when pointed at a live server. They are not part of the offline gate and may make billable external requests. Use them only when live credentials and a live run are intended; record actual run counts and artifact digests.
+
+### Historical live results
+
+These are prior run records, not results from the current acceptance run:
+
+- **Historical (2026-10-11):** three prompts with three runs each on `nvidia/nemotron-3-super-120b-a12b:free`; flow, sequence, and explainer each recorded 3/3 clean parses.
+- **Historical (2026-10-12):** three interactive artifact runs on the same model recorded 3/3 tool calls and 3/3 retrieved artifacts.
+
+Do not use these historical numbers as evidence that a current provider/model configuration works.
 
 ## Troubleshooting
 
-- **"Upstream error: …" in chat**: the server reached OpenRouter and was refused —
-  check the server console and, in order: your key (typo?), the model id (still
-  available on OpenRouter?), rate limits (`:free` models are throttled). Fix `.env`,
-  restart `npm run dev`.
-- **Blank reply / "Unknown component"**: the #1 GenUI bug — prompt spec and renderer
-  library out of sync. Re-run `npm run gen:spec` and restart.
-- **Adapter mismatch symptoms** (garbled or empty assistant messages): the stream adapter
-  must match the bytes the *browser* receives. Our server speaks OpenAI Chat Completions
-  SSE ⇒ `openAIAdapter()`. Change the server's wire format ⇒ change the adapter.
-- **Version drift**: exports here were verified against `@openuidev/react-ui@0.16.3`,
-  `react-headless@0.16.3`, `lang-core@0.3.2`. On upgrade, re-check: `componentLibrary`
-  prop, adapter exports (imported from `@openuidev/react-headless`), `generateSystemPrompt`
-  spec shape. **Installed packages win over any doc.**
+- **Server exits at startup:** if a key is set, also set a model id in `OPENROUTER_MODEL`.
+- **Visible “Upstream error” in chat:** check the server log, key, model availability, endpoint, and provider rate limits.
+- **JSON error before the stream:** inspect the response status/body; the API returns 400 for unsupported history and 413 for bodies over 1 MiB.
+- **Diagram validation error:** the tool returns renderer diagnostics to the model for correction within the three-execution budget, then shows the failure in chat/artifact UI.
+- **Renderer busy:** two diagram jobs are already active; there is no queue. Retry after one completes.
+- **Artifact unavailable:** it may have expired, been evicted under the count/byte cap, or disappeared when the in-memory store was cleared by a server restart.
+- **Stale component prompt:** after editing `src/library/`, run `npm run gen:spec`; then `npm run check:spec` confirms the generated contract matches.
 
-## Next phases (deliberately out of scope)
+## Not included
 
-Custom components (`defineComponent`) · your own chat UI (react-headless Level 2) ·
-theming (`createTheme`) · authentication (page auth ≠ API-route auth) · persistence
-(`restStorage`) · a correction loop for live model errors (you own it on the
-self-hosted path — the Gateway "proofreader" is the thing you didn't buy).
+The app has no user authentication, persistent chat history, or persistent artifact storage. Browser threads and server artifacts are in memory. Provider access is configured on the server; hosting and secret management remain deployment responsibilities.
