@@ -43,3 +43,29 @@ Observed on 2026-10-13 in the remediation worktree, at Node.js 24.21.0 and npm 1
 ## Remaining limits
 
 The live-provider baseline remains pending until an intentional live run is requested and completed; prior results remain historical. Native Windows process-tree execution was not run in this environment. These are limits on live/platform evidence, not open G01–G24 implementation findings.
+
+## Final branch review follow-up
+
+A fresh read-only review of `576e3d6..0abd506` found no Critical issues and five Important gaps. They were fixed in `2285c73`:
+
+| Review finding | Resolution and evidence |
+|---|---|
+| Malformed or interrupted tool-call deltas and repeated provider IDs could leave invalid browser history or collapse tool results. | The tool loop now buffers and normalizes each batch before sending it to the browser, repairs missing/duplicate IDs, rejects invalid arguments without execution, and returns one result per normalized ID. `npm run test:wire` covers recovery on the next user turn, output-budget interruption, and duplicate IDs; `npm run test:loop` remains green. |
+| Smoke and render checks could accept truncated/filter-failed completions, and diagram smoke could pass after artifact retrieval without a final assistant reply. | Text and diagram gates now require a nonblank assistant message ending in `finish_reason=stop`; diagram completion must follow the successful artifact result. The render gate reads raw SSE events and requires `[DONE]`, a normal assistant stop, and no error event. `npm run test:smoke-gates` covers the negative cases; the final keyless smoke/render phase passes. |
+| Wide glyphs in long sequence self-loop labels could extend beyond the SVG viewBox. | Visible self-loop text is bounded to 24 code points with an ellipsis and a conservative width estimate; the full text remains in the title/description. Chromium `getBBox()` checks cover 120 wide Latin glyphs and 60 repeated CJK pairs. |
+| The aggregate verifier could bypass server cleanup with `process.exit()` and timeout only its immediate child. | Verifier steps now use the process-tree runner; test-server use is wrapped in `try/finally`, and failure sets `process.exitCode`. `npm run test:verify-runtime` checks cleanup after a failed server-backed action and timeout reporting; `npm run test:process` covers descendant termination. |
+
+After `2285c73`, `npm run verify` exited 0: **26/26 steps in 141.0 seconds**. This included the keyless text and interactive diagram smokes, artifact retrieval/digest check, render gate, and production build. `npm run test:browser` passed 6 artifact-panel cases, 5 isolation cases, and the Chromium diagram geometry/accessibility checks. `npm run gen:spec && npm run check:spec` left the generated contract current, and `git diff --check` passed. The Vite chunk-size advisory remains informational.
+
+### Deferred Minor findings
+
+- `heldFinalStop` still ignores an SSE writer refusal for the final provider frame. This requires an unusually large final content frame (over the pending-frame cap); the residual behavior is that the final text can be dropped in that edge case. The targeted run-loop fix was considered small but left for a separate change.
+- The vendor regression test's inventory walks into `node_modules`, unlike the production checker. Installing the documented vendor-local generator dependencies can therefore make that regression test fail on its own dependency files. This is a test-inventory issue, not a vendor provenance result; inventory filtering is deferred.
+
+### Declined-to-judge areas
+
+- Live-provider/model reliability remains unverified because this acceptance run used the keyless canned provider. Run live smoke intentionally when model-backed behavior is the target; no live result is claimed here.
+- Native Windows process-tree execution remains unverified. The current evidence is Linux process-group coverage plus a simulated Windows `taskkill` failure; Windows behavior needs a Windows runner.
+- Authentication, durable persistence, billing, and production infrastructure remain outside this demo-remediation scope. Revisit before treating the demo as a production service.
+- Bundle-size optimization remains outside scope because no performance budget was part of the acceptance criteria. The production build reports a 2.67 MB minified application chunk.
+- A comprehensive security audit of untouched upstream viewer code was not performed. The review covered the vendored files and targeted template patch needed for this work; provenance checks do not constitute a full viewer audit.
