@@ -1,0 +1,490 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repository": "https://github.com/rajivmehtaflex/diagramify",
+    "revision": "748549b5b6e5687cd6c111dfa130d4ac7714b600",
+    "tree": "0e40abe39cbc72fcb52ffc1ba34b8dec96f234b5",
+    "commitDate": "2026-08-28T06:33:30Z",
+    "packageVersion": "2.16.0-dev.0",
+    "sourceArchive": {
+      "url": "https://codeload.github.com/rajivmehtaflex/diagramify/tar.gz/748549b5b6e5687cd6c111dfa130d4ac7714b600",
+      "sha256": "800de93b2010db347f40a319d5fd24d617cbb441100f4b16c5dcc71531c2abe1",
+      "bytes": 17305594
+    },
+    "importCommit": "77f3c7d06a9cd7e1f8c10d29b8cc8b8413f17e21",
+    "revisionClaim": "This pinned revision reproduces the vendored bytes; import history does not preserve the original upstream revision."
+  },
+  "subset": {
+    "upstreamFileCount": 174,
+    "includedUpstreamFiles": 66,
+    "excludedUpstreamFiles": 108,
+    "pristineUpstreamFiles": 65,
+    "patchedUpstreamFiles": 1,
+    "localFiles": 1,
+    "excludedCategories": [
+      {
+        "path": "test/",
+        "files": 94
+      },
+      {
+        "path": "examples/*.html",
+        "files": 8
+      },
+      {
+        "path": "references/",
+        "files": 4
+      },
+      {
+        "path": "recipes/scenarios.mjs",
+        "files": 1
+      },
+      {
+        "path": "SKILL.md",
+        "files": 1
+      }
+    ]
+  },
+  "generatorDependencies": {
+    "ajv": "8.20.0",
+    "simple-icons": "16.28.0"
+  },
+  "generators": {
+    "validators": {
+      "script": "scripts/generate-validators.mjs",
+      "scriptSha256": "3a1d8aa240a29b4649ac9d31abb31979493a45af18efaf3577bad8872a28a00f",
+      "inputs": [
+        "schemas/common.schema.json",
+        "schemas/workflow.schema.json",
+        "schemas/sequence.schema.json",
+        "schemas/dataflow.schema.json",
+        "schemas/lifecycle.schema.json",
+        "schemas/architecture.schema.json",
+        "schemas/explainer-steps.schema.json"
+      ],
+      "output": "renderers/shared/generated-validators.mjs"
+    },
+    "brandMarks": {
+      "script": "scripts/generate-brand-marks.mjs",
+      "scriptSha256": "0434c31903b831382a91e85a329bcbcb39b32f29c656273a273f896b3b0a42e7",
+      "inputs": [
+        "brand-marks/catalog.json"
+      ],
+      "output": "renderers/shared/generated-brand-marks.mjs"
+    }
+  },
+  "patches": [
+    {
+      "path": "assets/template.html",
+      "upstreamSha256": "15d9e25f6577ecd572ea73a103cdccdbc32a956cd08542a00957d524c3d220a5",
+      "currentSha256": "e7800bc50b1b5196355ca1e33ef881eb7620002906b5bc83767624cb50b172d1",
+      "documentation": "PATCHES.md",
+      "scope": "initExplainerToc() only"
+    }
+  ],
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "2f724fa953b4eaa8ec75fa56919ce474b57adce54d2456a3791510bc53735cbd",
+      "status": "pristine",
+      "upstreamPath": "LICENSE"
+    },
+    {
+      "path": "PATCHES.md",
+      "sha256": "ca7c8885c103b5278111a3edd07702c9e65df2ae04c5d0577cbbf262d03f769d",
+      "status": "local",
+      "reason": "Documents the Task 5 local viewer patch."
+    },
+    {
+      "path": "assets/template.html",
+      "sha256": "e7800bc50b1b5196355ca1e33ef881eb7620002906b5bc83767624cb50b172d1",
+      "status": "patched",
+      "upstreamPath": "diagramify/assets/template.html",
+      "upstreamSha256": "15d9e25f6577ecd572ea73a103cdccdbc32a956cd08542a00957d524c3d220a5",
+      "patchRecord": "PATCHES.md"
+    },
+    {
+      "path": "bin/diagramify.mjs",
+      "sha256": "0cfe9c71f06c8f96841f51fe524e19add998811fdb8a877f4b4c1a89229e88e5",
+      "status": "pristine",
+      "upstreamPath": "diagramify/bin/diagramify.mjs"
+    },
+    {
+      "path": "bin/open-artifact.mjs",
+      "sha256": "add1722186683c12770c575585bbb8774919c15b87361e10d2fe834623223159",
+      "status": "pristine",
+      "upstreamPath": "diagramify/bin/open-artifact.mjs"
+    },
+    {
+      "path": "bin/preview.mjs",
+      "sha256": "894ada75590e7a65548a5748f6a3a63aa9f1afec1095a7bba64b010453792e7a",
+      "status": "pristine",
+      "upstreamPath": "diagramify/bin/preview.mjs"
+    },
+    {
+      "path": "bin/visual-check.mjs",
+      "sha256": "078e1105c2d175bea58933dc503731e51cc523c893a817b8d6f30668b8d25a32",
+      "status": "pristine",
+      "upstreamPath": "diagramify/bin/visual-check.mjs"
+    },
+    {
+      "path": "brand-marks/README.md",
+      "sha256": "e716f9f3ab9d7888dfe5eba545d2c9fd80e98b49c57f4124e78aca8e5d186622",
+      "status": "pristine",
+      "upstreamPath": "diagramify/brand-marks/README.md"
+    },
+    {
+      "path": "brand-marks/catalog.json",
+      "sha256": "e1a6c555cbf8ea36fb8100a4a25824e7ab87bebe9871e450ba05b6dea3b036d6",
+      "status": "pristine",
+      "upstreamPath": "diagramify/brand-marks/catalog.json"
+    },
+    {
+      "path": "delta/architecture-delta.mjs",
+      "sha256": "60566eadeaea29d01973a25a78f8c9fc37869498a98d43ef375c2e6e5ed5e423",
+      "status": "pristine",
+      "upstreamPath": "diagramify/delta/architecture-delta.mjs"
+    },
+    {
+      "path": "examples/agent-run.lifecycle.json",
+      "sha256": "af939579dcafc8b4c49f09594591577994398aee57a57369d4c791dfc0d85a42",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/agent-run.lifecycle.json"
+    },
+    {
+      "path": "examples/agent-tool-call.workflow.json",
+      "sha256": "9c94c8c0b2104478b77befb4cc5e343d381acba6e66645ab17616fde20b60e05",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/agent-tool-call.workflow.json"
+    },
+    {
+      "path": "examples/async-job-roundtrip.sequence.json",
+      "sha256": "545f20920c89b69c2bb1f15508d5543fddbeb15cffba61e102206e04bd5a5cd9",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/async-job-roundtrip.sequence.json"
+    },
+    {
+      "path": "examples/attention-mechanism.explainer-steps.json",
+      "sha256": "3904c5f5f6b2a625ff105e91d8c6632550937b3d00f81543c75b488626d8dfc1",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/attention-mechanism.explainer-steps.json"
+    },
+    {
+      "path": "examples/brand-aware-delivery.architecture.json",
+      "sha256": "d4f0df8114b3524756ffa49529c015e00757b0594a357183490c1edeb341e3c6",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/brand-aware-delivery.architecture.json"
+    },
+    {
+      "path": "examples/cache-miss-request.sequence.json",
+      "sha256": "4bbaa6ca3cd4036002fd5d0f3a332eb922cec69d09bac3d7925f95beb4308389",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/cache-miss-request.sequence.json"
+    },
+    {
+      "path": "examples/checkout-platform.base.architecture.json",
+      "sha256": "c112195e7285e3e4aedaeab3e1f85f5891d30fccc2c260aebe4e1da12c80cf84",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/checkout-platform.base.architecture.json"
+    },
+    {
+      "path": "examples/checkout-platform.head.architecture.json",
+      "sha256": "e3aaf47f77afeadafc81c6ce853dc1df68cc1e6932dec972cf478f4008fdda99",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/checkout-platform.head.architecture.json"
+    },
+    {
+      "path": "examples/deployment-release.lifecycle.json",
+      "sha256": "735c2c5819266e6ea2a71775b6eefce98b53030ce90cb721dc8e1d022ce5be71",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/deployment-release.lifecycle.json"
+    },
+    {
+      "path": "examples/event-stream.dataflow.json",
+      "sha256": "a92d6597ddbe164f395da32a7d4b33cfae08edd7d9600a6fb45a2058e5bbb43e",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/event-stream.dataflow.json"
+    },
+    {
+      "path": "examples/explainer-kv-cache.json",
+      "sha256": "b01b80fced0fd13b4f93d737a6d71313fd6218d7f7203007f04428b4715231a8",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/explainer-kv-cache.json"
+    },
+    {
+      "path": "examples/incident-response.workflow.json",
+      "sha256": "5c760c82eee545dfb7da38a4e628059d7891af4cfbfc13c8a7009ea64f69aa1b",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/incident-response.workflow.json"
+    },
+    {
+      "path": "examples/product-analytics.dataflow.json",
+      "sha256": "6fa38a7ccedf96da592d60b392783b846188eaa3ec9136c6dc06ca020e43a110",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/product-analytics.dataflow.json"
+    },
+    {
+      "path": "examples/production-deployment.architecture.json",
+      "sha256": "ec484aa8576664fdb207b543fa49486b23273faccb7a5071e1a0becfb48c22eb",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/production-deployment.architecture.json"
+    },
+    {
+      "path": "examples/release-delivery.workflow.json",
+      "sha256": "e5c880417eac1623923c3dd5461e0c78acd762e1621a28bd53fc14a84cad6a91",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/release-delivery.workflow.json"
+    },
+    {
+      "path": "examples/web-app.architecture.json",
+      "sha256": "483350f5297df682aba4e4a0fa491307ce3d3abd725ae4df07fab177490752cf",
+      "status": "pristine",
+      "upstreamPath": "diagramify/examples/web-app.architecture.json"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "31f2041be149a7108a7e1f639f1d2c3977d2399e1251eb07d694ad2330e3837a",
+      "status": "pristine",
+      "upstreamPath": "diagramify/package-lock.json"
+    },
+    {
+      "path": "package.json",
+      "sha256": "976c5187738f81058fc1be34d8286ea8308a59541d80c17c19583451c2f34ade",
+      "status": "pristine",
+      "upstreamPath": "diagramify/package.json"
+    },
+    {
+      "path": "renderers/architecture/grid.mjs",
+      "sha256": "f6de99c32436feed3378b0ddef516bb4732ff27a89c543b50635d4d14a15a55a",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/architecture/grid.mjs"
+    },
+    {
+      "path": "renderers/architecture/render-architecture.mjs",
+      "sha256": "efd618c832f6ac02f0b2dc51e1cae89d4cda45ba24b475cd233adb2db3421f2a",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/architecture/render-architecture.mjs"
+    },
+    {
+      "path": "renderers/dataflow/README.md",
+      "sha256": "49957388620346d85935cfbce809de3a2481e36c58a508067b57fe7b76a4cc06",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/dataflow/README.md"
+    },
+    {
+      "path": "renderers/dataflow/render-dataflow.mjs",
+      "sha256": "8a1b831b0dabfd7117f95ea578959b4c9ece73e70c09ee6a3d3250a39e9c861b",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/dataflow/render-dataflow.mjs"
+    },
+    {
+      "path": "renderers/explainer-steps/render-explainer-steps.mjs",
+      "sha256": "1fdfa9bbef0e3464bb71792c0b85d9ed20d8488da1a41f4b0ad3f33d22a47c97",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/explainer-steps/render-explainer-steps.mjs"
+    },
+    {
+      "path": "renderers/lifecycle/README.md",
+      "sha256": "eff745466e840390f401b981b15d3980064610e1e20469e3019c4533c7d5d2c6",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/lifecycle/README.md"
+    },
+    {
+      "path": "renderers/lifecycle/render-lifecycle.mjs",
+      "sha256": "6e1fa98a28527f9c47b00e6f13b9036058d597ac56e601072497fdc3ac6153ff",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/lifecycle/render-lifecycle.mjs"
+    },
+    {
+      "path": "renderers/sequence/README.md",
+      "sha256": "474f89353842c8ee5f415227dce8884161e7fc540e5546bce19608800ae668df",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/sequence/README.md"
+    },
+    {
+      "path": "renderers/sequence/render-sequence.mjs",
+      "sha256": "bd568e3b246f37477adb046c520be10504b65bf30f8eaed3c43cd0dbbcee98ce",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/sequence/render-sequence.mjs"
+    },
+    {
+      "path": "renderers/shared/brand-marks.mjs",
+      "sha256": "adc688a1d536a0b2f301e2764b946db4ce44c6a3e50d9205a0f30fac4f222966",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/brand-marks.mjs"
+    },
+    {
+      "path": "renderers/shared/cli.mjs",
+      "sha256": "226e60a86b2652bdd35ad8797b028333290b898d55a2bd6fe870fd65ab3e6b67",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/cli.mjs"
+    },
+    {
+      "path": "renderers/shared/desktop-readability.mjs",
+      "sha256": "b36203a11df348706e541f309266a0f9b914dac6a7eb8ba804e3abe8f8d6c710",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/desktop-readability.mjs"
+    },
+    {
+      "path": "renderers/shared/diagnostics.mjs",
+      "sha256": "537f8b4f2982bc5a0387026630ed4fb7ef50e964a3e3f3709cfef35b93ec53de",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/diagnostics.mjs"
+    },
+    {
+      "path": "renderers/shared/engineering-profiles.mjs",
+      "sha256": "7e99f9d5423f66cc9ab6224da56dc2d5aa6c6faec29178034794e9db6b5b2889",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/engineering-profiles.mjs"
+    },
+    {
+      "path": "renderers/shared/generated-brand-marks.mjs",
+      "sha256": "0f157d229c12df6f53763a3b88684baa5803a52484c49c4d34ec40b8743beea2",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/generated-brand-marks.mjs"
+    },
+    {
+      "path": "renderers/shared/generated-validators.mjs",
+      "sha256": "afa7c649777a417d7c3764cd775b45c1900d04b0b6abd4eeafc2a3d87793adfe",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/generated-validators.mjs"
+    },
+    {
+      "path": "renderers/shared/geometry.mjs",
+      "sha256": "09762ecd694cf1857fe370cf9b43f5501b205383eee90f30b5a945e9c4d56d06",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/geometry.mjs"
+    },
+    {
+      "path": "renderers/shared/i18n.mjs",
+      "sha256": "a0bcc592d67af936f00a7f4728ec0751dc3549b279ef28266a4488b7ebca73ed",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/i18n.mjs"
+    },
+    {
+      "path": "renderers/shared/layout-report.mjs",
+      "sha256": "44c2f74a20e483dd37dae6791ede39284ce3bac1a2a13872d2912999e8504df5",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/layout-report.mjs"
+    },
+    {
+      "path": "renderers/shared/legend.mjs",
+      "sha256": "4c8b37f10fb5c783a28bff6aa35bc3966155213ee32f64a8252eab5b9e64a747",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/legend.mjs"
+    },
+    {
+      "path": "renderers/shared/output-path.mjs",
+      "sha256": "2b04cd6e9be7eab9accec2bdf67caf0c5486d5f14d543350ed3923f49aea55b3",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/output-path.mjs"
+    },
+    {
+      "path": "renderers/shared/repository-evidence.mjs",
+      "sha256": "bada6c79b15aba5ddd9b8607aac2e3cc3a312e9bffd38343695c3436fb4ce365",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/repository-evidence.mjs"
+    },
+    {
+      "path": "renderers/shared/text-fit.mjs",
+      "sha256": "35b6ef2c64d88c1ea4e5aab2af7c4e8a2c2e1be62db71263787d39a9797e7dea",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/text-fit.mjs"
+    },
+    {
+      "path": "renderers/shared/utils.mjs",
+      "sha256": "fe3f85293a16399f915af4036fdea798f904820ad6fc8b4a4353323a6df84338",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/utils.mjs"
+    },
+    {
+      "path": "renderers/shared/validator.mjs",
+      "sha256": "7460d7fcbcdf710649256c5e96142ae26d807a655d3296ee8caf7f5e158622cc",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/shared/validator.mjs"
+    },
+    {
+      "path": "renderers/workflow/README.md",
+      "sha256": "abc89675be001f88768f29e29c6d1b408334164e3f268adc7bcaf23549d7b829",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/workflow/README.md"
+    },
+    {
+      "path": "renderers/workflow/render-workflow.mjs",
+      "sha256": "fbee868d29fb769b174eab61d7b2f2a88e11d64fee2101f306f8dd3f4d5a772a",
+      "status": "pristine",
+      "upstreamPath": "diagramify/renderers/workflow/render-workflow.mjs"
+    },
+    {
+      "path": "schemas/README.md",
+      "sha256": "0b91801bc673581df7f765ade5a0789c88ce6b87f8b457cff5fd56e27e3b9b70",
+      "status": "pristine",
+      "upstreamPath": "diagramify/schemas/README.md"
+    },
+    {
+      "path": "schemas/architecture.schema.json",
+      "sha256": "e3d0ab3bcc830988cad50c53ad4872d29d22886a9ac90e03ef07ebf4e391abbf",
+      "status": "pristine",
+      "upstreamPath": "diagramify/schemas/architecture.schema.json"
+    },
+    {
+      "path": "schemas/common.schema.json",
+      "sha256": "05f231af80051c11c3e18cf98324a2e9e7c1582f10427898b8f7549b31889943",
+      "status": "pristine",
+      "upstreamPath": "diagramify/schemas/common.schema.json"
+    },
+    {
+      "path": "schemas/dataflow.schema.json",
+      "sha256": "a55e9703019066906f2cf304732287eb8a94b23acaff5581fe4f97f9f5d7c42c",
+      "status": "pristine",
+      "upstreamPath": "diagramify/schemas/dataflow.schema.json"
+    },
+    {
+      "path": "schemas/explainer-steps.schema.json",
+      "sha256": "dea3abbf85e2b4940c68774d12034b3424600a492c3abd476ac03d04c17b8196",
+      "status": "pristine",
+      "upstreamPath": "diagramify/schemas/explainer-steps.schema.json"
+    },
+    {
+      "path": "schemas/lifecycle.schema.json",
+      "sha256": "f327d628571a0f8e7376376a8594fd08df9e63f61dbdcbc9416717b616b53ba9",
+      "status": "pristine",
+      "upstreamPath": "diagramify/schemas/lifecycle.schema.json"
+    },
+    {
+      "path": "schemas/sequence.schema.json",
+      "sha256": "f7dc53246dbb2dc54e63519797a77382c5cf9735368b1b61325ffc83edfcf5c9",
+      "status": "pristine",
+      "upstreamPath": "diagramify/schemas/sequence.schema.json"
+    },
+    {
+      "path": "schemas/workflow.schema.json",
+      "sha256": "409336f478c1a05bf4757a690062f55122b7d0d4633ef72488fa58ff14d61883",
+      "status": "pristine",
+      "upstreamPath": "diagramify/schemas/workflow.schema.json"
+    },
+    {
+      "path": "scripts/check-render-output.mjs",
+      "sha256": "5b86f60bd6607c580e1d2daaf181a129d81c3293310b3c7f38eda6435b8520b5",
+      "status": "pristine",
+      "upstreamPath": "diagramify/scripts/check-render-output.mjs"
+    },
+    {
+      "path": "scripts/generate-brand-marks.mjs",
+      "sha256": "0434c31903b831382a91e85a329bcbcb39b32f29c656273a273f896b3b0a42e7",
+      "status": "pristine",
+      "upstreamPath": "diagramify/scripts/generate-brand-marks.mjs"
+    },
+    {
+      "path": "scripts/generate-validators.mjs",
+      "sha256": "3a1d8aa240a29b4649ac9d31abb31979493a45af18efaf3577bad8872a28a00f",
+      "status": "pristine",
+      "upstreamPath": "diagramify/scripts/generate-validators.mjs"
+    },
+    {
+      "path": "scripts/render-examples.mjs",
+      "sha256": "484ab89a21c9e75533cf3652929f33a384c31331939d152e443ef19622fb33b1",
+      "status": "pristine",
+      "upstreamPath": "diagramify/scripts/render-examples.mjs"
+    }
+  ]
+}

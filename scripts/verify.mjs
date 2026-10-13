@@ -51,6 +51,7 @@ const npmChecks = [
   ["prompt", "test:prompt"],
   ["routing", "test:routing"],
   ["smoke", "test:smoke-gates"],
+  ["vendor", "check:vendor"],
   ["harness", "test:harness"],
   ["error", "test:error"],
 ];
