@@ -91,6 +91,17 @@ await check("valid_diagram_run_passes", () => {
   assert.deepEqual(verdict, { ok: true, errors: [] }, `a complete honest run must pass: ${JSON.stringify(verdict.errors)}`);
 });
 
+await check("diagram_requires_final_assistant_completion_after_artifact", () => {
+  const events = [
+    ...toolCallEvents("call_1"),
+    ...toolResultEvent("call_1", receipt(HTML)),
+    DONE,
+  ];
+  const verdict = verifyDiagramRun({ events, artifactResponse: artifactResponse(HTML) });
+  assert.equal(verdict.ok, false, "a retrieved artifact without a final assistant reply is incomplete");
+  has(verdict.errors, /final assistant|final response|assistant completion/i, "the missing final reply must be named");
+});
+
 await check("wrong_digest_fails", () => {
   // Same byte length, different bytes: only the digest may complain.
   const other = "<!doctype html><html><body>DELIVERED diagram</body></html>";
@@ -273,6 +284,17 @@ await check("text_run_requires_done_nonblank_parse_clean_card", () => {
   const good = verifyTextRun({ text, events: [chunk({ role: "assistant", content: text }), chunk({}, "stop"), DONE], parseErrors: [], root: { typeName: "Card", props: { children: [{ typeName: "CardHeader" }] } } });
   assert.deepEqual(good, { ok: true, errors: [] }, `an honest text run passes: ${JSON.stringify(good.errors)}`);
 
+  for (const reason of ["length", "content_filter"]) {
+    const verdict = verifyTextRun({
+      text,
+      events: [chunk({ role: "assistant", content: text }), chunk({}, reason), DONE],
+      parseErrors: [],
+      root: { typeName: "Card", props: { children: [{ typeName: "CardHeader" }] } },
+    });
+    assert.equal(verdict.ok, false, `${reason} is not a successful completion`);
+    has(verdict.errors, reason === "length" ? /length|truncat/i : /content.filter|filter/i, `${reason} must be reported`);
+  }
+
   const noDone = verifyTextRun({ text, events: [chunk({ role: "assistant", content: text })], parseErrors: [], root: { typeName: "Card", props: { children: [] } } });
   assert.equal(noDone.ok, false);
   has(noDone.errors, /\[DONE\]/, "a text run without [DONE] is incomplete");
@@ -300,8 +322,14 @@ await check("text_run_requires_done_nonblank_parse_clean_card", () => {
 
 await check("render_gate_requires_clean_parse_and_expected_family_markup", () => {
   const flowHtml = '<div class="gx-diagram"><svg aria-labelledby="fd-arrow-r1-title"><defs><marker id="fd-arrow-r1"/></defs></svg></div>';
-  const clean = { text: "root = Card([flow])", parseErrors: [], renderedHtml: flowHtml, expectedFamily: "FlowDiagram", completed: true };
+  const text = "root = Card([flow])";
+  const events = [chunk({ role: "assistant", content: text }), chunk({}, "stop"), DONE];
+  const clean = { text, parseErrors: [], renderedHtml: flowHtml, expectedFamily: "FlowDiagram", events };
   assert.deepEqual(verifyRenderedRecipe(clean), { ok: true, errors: [] }, "a clean flow render passes");
+
+  const unverified = verifyRenderedRecipe({ ...clean, events: undefined, completed: true });
+  assert.equal(unverified.ok, false, "render markup plus a caller-supplied completion flag cannot replace stream evidence");
+  has(unverified.errors, /events|completion|stream/i, "missing stream events must be named");
 
   const noFamily = verifyRenderedRecipe({ ...clean, renderedHtml: "<div>just text, no diagram</div>" });
   assert.equal(noFamily.ok, false);
@@ -315,7 +343,7 @@ await check("render_gate_requires_clean_parse_and_expected_family_markup", () =>
     parseErrors: [],
     renderedHtml: '<div class="gx-steps"><ol aria-label="Ordered concept walkthrough"><li>one</li></ol></div>',
     expectedFamily: "StepExplainer",
-    completed: true,
+    events,
   });
   assert.deepEqual(explainer, { ok: true, errors: [] }, "a family without svg is proved by its own markup");
 
@@ -327,11 +355,26 @@ await check("render_gate_requires_clean_parse_and_expected_family_markup", () =>
   assert.equal(unknownFamily.ok, false);
   has(unknownFamily.errors, /known family|unsupported/i, "an unknown family name must be refused, never vacuously pass");
 
-  const incomplete = verifyRenderedRecipe({ ...clean, completed: false });
+  const incomplete = verifyRenderedRecipe({ ...clean, events: events.filter((event) => event !== DONE) });
   assert.equal(incomplete.ok, false);
   has(incomplete.errors, /\[DONE\]/, "markup from an unfinished stream must not pass");
-  const assumed = verifyRenderedRecipe({ ...clean, completed: undefined });
-  assert.equal(assumed.ok, false, "completion must be proved, never defaulted");
+  const assumed = verifyRenderedRecipe({ ...clean, events: undefined });
+  assert.equal(assumed.ok, false, "completion must be proved from events, never defaulted");
+});
+
+await check("render_gate_rejects_stream_errors_and_nonstop_finish_reasons", () => {
+  const flowHtml = '<div class="gx-diagram"><svg aria-labelledby="fd-arrow-r1-title"><defs><marker id="fd-arrow-r1"/></defs></svg></div>';
+  const base = { text: "root = Card([flow])", parseErrors: [], renderedHtml: flowHtml, expectedFamily: "FlowDiagram" };
+  const failedCases = [
+    ["truncated", [chunk({ role: "assistant", content: base.text }), chunk({}, "length"), DONE]],
+    ["filtered", [chunk({ role: "assistant", content: base.text }), chunk({}, "content_filter"), DONE]],
+    ["terminal error", [chunk({ role: "assistant", content: base.text }), { error: { message: "upstream failed" } }, DONE]],
+  ];
+  for (const [label, events] of failedCases) {
+    const verdict = verifyRenderedRecipe({ ...base, events });
+    assert.equal(verdict.ok, false, `${label} stream must not pass from markup alone`);
+    has(verdict.errors, label === "terminal error" ? /upstream failed|terminal error/i : /finish|complete|truncat|filter/i, `${label} reason must be reported`);
+  }
 });
 
 await check("example_coverage_requires_parsed_components_in_clean_examples", () => {

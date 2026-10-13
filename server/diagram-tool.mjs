@@ -150,9 +150,16 @@ export function accumulateToolCalls(deltas) {
   return Array.from(map.values());
 }
 
-export function assistantToolCallChunks({ id, name, arguments: args, index = 0 }, model = "diagram-model") {
+export function assistantToolCallBatchChunks(calls, model = "diagram-model") {
+  if (!Array.isArray(calls) || calls.length === 0) return [];
   const timestamp = Math.floor(Date.now() / 1000);
   const chunkId = `chatcmpl-${Date.now().toString(36)}`;
+  const starts = calls.map(({ id, name, index = 0 }) => ({
+    index,
+    id,
+    type: "function",
+    function: { name, arguments: "" },
+  }));
 
   const chunk1 = `data: ${JSON.stringify({
     id: chunkId,
@@ -164,42 +171,35 @@ export function assistantToolCallChunks({ id, name, arguments: args, index = 0 }
         index: 0,
         delta: {
           role: "assistant",
-          tool_calls: [
-            {
-              index,
-              id,
-              type: "function",
-              function: { name, arguments: "" },
-            },
-          ],
+          tool_calls: starts,
         },
         finish_reason: null,
       },
     ],
   })}\n\n`;
 
-  const chunk2 = `data: ${JSON.stringify({
-    id: chunkId,
-    object: "chat.completion.chunk",
-    created: timestamp,
-    model,
-    choices: [
-      {
-        index: 0,
-        delta: {
-          tool_calls: [
-            {
-              index,
-              function: { arguments: args },
+  const argumentChunks = [];
+  for (const { index = 0, arguments: args = "" } of calls) {
+    for (let offset = 0; offset < args.length; offset += 8 * 1024) {
+      argumentChunks.push(`data: ${JSON.stringify({
+        id: chunkId,
+        object: "chat.completion.chunk",
+        created: timestamp,
+        model,
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [{ index, function: { arguments: args.slice(offset, offset + 8 * 1024) } }],
             },
-          ],
-        },
-        finish_reason: null,
-      },
-    ],
-  })}\n\n`;
+            finish_reason: null,
+          },
+        ],
+      })}\n\n`);
+    }
+  }
 
-  const chunk3 = `data: ${JSON.stringify({
+  const finish = `data: ${JSON.stringify({
     id: chunkId,
     object: "chat.completion.chunk",
     created: timestamp,
@@ -213,7 +213,11 @@ export function assistantToolCallChunks({ id, name, arguments: args, index = 0 }
     ],
   })}\n\n`;
 
-  return [chunk1, chunk2, chunk3];
+  return [chunk1, ...argumentChunks, finish];
+}
+
+export function assistantToolCallChunks(call, model = "diagram-model") {
+  return assistantToolCallBatchChunks([call], model);
 }
 
 export function toolResultChunk({ toolCallId, content }, model = "diagram-model") {

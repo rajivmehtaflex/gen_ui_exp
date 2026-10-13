@@ -12,9 +12,8 @@
 //   successfulDiagramResult   the one correlated ok:true receipt a stream carries
 //   verifyTextRun             a text smoke run needs [DONE], nonblank output,
 //                             a clean parse, and a nonempty Card as the root
-//   verifyRenderedRecipe      a rendered recipe needs a clean parse AND the
-//                             expected diagram family's own markup — svg alone
-//                             proves nothing
+//   verifyRenderedRecipe      a rendered recipe needs the raw stream evidence,
+//                             a clean parse, and the expected family's markup
 //   verifyExampleCoverage     every diagram component the library advertises
 //                             must be INSTANTIATED by some clean prompt example,
 //                             not merely mentioned near one
@@ -56,7 +55,7 @@ function readStream(events) {
   const createDiagramCallIds = new Set();
   const results = [];
 
-  for (const event of Array.isArray(events) ? events : []) {
+  for (const [index, event] of (Array.isArray(events) ? events : []).entries()) {
     if (event === DONE || event === null || typeof event !== "object") continue;
     if (event.error !== undefined && event.error !== null) {
       errorEvents.push(typeof event.error?.message === "string" ? event.error.message : JSON.stringify(event.error));
@@ -74,13 +73,48 @@ function readStream(events) {
       try {
         result = JSON.parse(delta.content);
       } catch {
-        results.push({ toolCallId, result: null, unparseable: true });
+        results.push({ index, toolCallId, result: null, unparseable: true });
         continue;
       }
-      results.push({ toolCallId, result, unparseable: false });
+      results.push({ index, toolCallId, result, unparseable: false });
     }
   }
   return { sawDone, errorEvents, createDiagramCallIds, results };
+}
+
+// A [DONE] sentinel only says the transport ended. A successful run also needs
+// an assistant message that ended with finish_reason=stop; truncation,
+// filtering, and terminal error events are failures even when [DONE] follows.
+function assistantCompletion(events) {
+  let assistantTextSinceTool = false;
+  let finalStopIndex = -1;
+  const errors = [];
+  for (const [index, event] of (Array.isArray(events) ? events : []).entries()) {
+    if (event === DONE || event === null || typeof event !== "object") continue;
+    if (event.error !== undefined && event.error !== null) {
+      errors.push(`server sent a terminal error event: ${typeof event.error?.message === "string" ? event.error.message : JSON.stringify(event.error)}`);
+      continue;
+    }
+    const choice = event.choices?.[0];
+    const delta = choice?.delta;
+    if (delta?.role === "tool" || choice?.finish_reason === "tool_calls") {
+      assistantTextSinceTool = false;
+      finalStopIndex = -1;
+    }
+    if (delta?.role !== "tool" && typeof delta?.content === "string" && delta.content.trim()) {
+      assistantTextSinceTool = true;
+    }
+    if (choice?.finish_reason === "length") {
+      errors.push("assistant response ended with finish_reason=length (truncated)");
+      finalStopIndex = -1;
+    } else if (choice?.finish_reason === "content_filter") {
+      errors.push("assistant response ended with finish_reason=content_filter");
+      finalStopIndex = -1;
+    } else if (choice?.finish_reason === "stop" && assistantTextSinceTool) {
+      finalStopIndex = index;
+    }
+  }
+  return { finalStopIndex, errors };
 }
 
 // The single correlated ok:true receipt a run carries, or null when the run
@@ -103,6 +137,8 @@ export function verifyDiagramRun({ events, artifactResponse } = {}) {
   }
 
   const { sawDone, errorEvents, createDiagramCallIds, results } = readStream(events);
+  const completion = assistantCompletion(events);
+  errors.push(...completion.errors.filter((message) => !message.startsWith("server sent a terminal error event:")));
   for (const message of errorEvents) errors.push(`server sent a terminal error event: ${message}`);
   if (!sawDone) errors.push('stream ended without a terminal "data: [DONE]" frame');
   for (const entry of results) {
@@ -130,7 +166,12 @@ export function verifyDiagramRun({ events, artifactResponse } = {}) {
 
   const receipt = successes[0]?.result;
   const receiptUsable = receipt !== undefined && validateReceipt(receipt, errors);
-  if (successes[0] !== undefined) verifyArtifactResponse(artifactResponse, receiptUsable ? receipt : null, errors);
+  if (successes[0] !== undefined) {
+    verifyArtifactResponse(artifactResponse, receiptUsable ? receipt : null, errors);
+    if (completion.finalStopIndex <= successes[0].index) {
+      errors.push("successful artifact has no final assistant completion after its tool result");
+    }
+  }
 
   return { ok: errors.length === 0, errors };
 }
@@ -208,6 +249,11 @@ function verifyArtifactResponse(artifactResponse, receipt, errors) {
 export function verifyTextRun({ text, events, parseErrors, root } = {}) {
   const errors = [];
   const list = Array.isArray(events) ? events : [];
+  const completion = assistantCompletion(list);
+  errors.push(...completion.errors.filter((message) => !message.startsWith("server sent a terminal error event:")));
+  if (completion.finalStopIndex < 0) {
+    errors.push("no final assistant completion: nonblank assistant text must end with finish_reason=stop");
+  }
   if (!list.some((event) => event === DONE)) {
     errors.push('stream ended without a terminal "data: [DONE]" frame — the reply never completed');
   }
@@ -236,11 +282,11 @@ export function verifyTextRun({ text, events, parseErrors, root } = {}) {
   return { ok: errors.length === 0, errors };
 }
 
-// Judges one rendered recipe: a completed stream, parse cleanliness, then the
-// expected family's own markup. Leftover svg from a partial render proves
-// nothing — and neither does markup from a stream that never finished, since a
-// truncated recipe can still parse cleanly and render its first blocks.
-export function verifyRenderedRecipe({ text, parseErrors, renderedHtml, expectedFamily, completed } = {}) {
+// Judges one rendered recipe from raw stream evidence, parse cleanliness, and
+// the expected family's markup. A caller-supplied completion boolean cannot
+// prove the stream ended normally: markup from a truncated recipe can still
+// parse and render its first blocks.
+export function verifyRenderedRecipe({ text, parseErrors, renderedHtml, expectedFamily, events } = {}) {
   const errors = [];
   const family = FAMILY_MARKUP[expectedFamily];
   if (!family) {
@@ -249,8 +295,15 @@ export function verifyRenderedRecipe({ text, parseErrors, renderedHtml, expected
       errors: [`unknown family ${JSON.stringify(expectedFamily ?? null)} — expected one of: ${Object.keys(FAMILY_MARKUP).join(", ")}`],
     };
   }
-  if (completed !== true) {
-    errors.push('stream did not complete: no terminal "data: [DONE]" frame arrived');
+  if (!Array.isArray(events)) {
+    errors.push("no stream events supplied: completion and provider errors cannot be verified");
+  } else if (!events.some((event) => event === DONE)) {
+    errors.push('stream ended without a terminal "data: [DONE]" frame');
+  }
+  const completion = assistantCompletion(events);
+  errors.push(...completion.errors);
+  if (completion.finalStopIndex < 0) {
+    errors.push("no final assistant completion: nonblank assistant text must end with finish_reason=stop");
   }
   if (typeof text !== "string" || text.trim().length === 0) {
     errors.push("blank reply: no recipe text was streamed");

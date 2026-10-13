@@ -19,7 +19,7 @@ The browser renderer and server prompt must use the same `appChatLibrary`. The b
 
 ## Tests and Validation
 
-This repository uses standalone scripts, not a test framework. `npm run verify` runs the sequential offline checks, keyless chat/artifact smoke paths, a render gate, and the build; it does not call a live provider. `npm run test:browser` runs Playwright artifact, isolation, and diagram geometry/accessibility checks after `npx playwright install chromium`. `npm run check:vendor` validates vendor provenance and reproduces generated assets. Focused checks include `npm run check:recipe`, `npm run check:examples`, `npm run check:diagram`, `npm run test:library`, and `npm run test:layout`. Live smoke scripts can call an external model and are opt-in.
+This repository uses standalone scripts, not a test framework. `npm run verify` runs the sequential offline checks, keyless chat/artifact smoke paths, a render gate, and the build; it does not call a live provider. `npm run test:browser` runs Playwright artifact, isolation, and diagram geometry/accessibility checks after `npx playwright install chromium`. `npm run check:vendor` validates vendor provenance and reproduces generated assets. Focused checks include `npm run check:recipe`, `npm run check:examples`, `npm run check:diagram`, `npm run test:library`, `npm run test:layout`, and `npm run test:verify-runtime` for verifier cleanup and timeout behavior. Live smoke scripts can call an external model and are opt-in.
 
 ## Style, Commits, and Configuration
 

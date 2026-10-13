@@ -31,6 +31,7 @@
     "test:prompt": "node scripts/test-diagram-prompt.mjs",
     "test:routing": "node scripts/test-diagram-policy.mjs",
     "test:smoke-gates": "node scripts/test-smoke-gates.mjs",
+    "test:verify-runtime": "node scripts/test-verify-runtime.mjs",
     "test:vendor": "node scripts/test-vendor.mjs",
     "check:vendor": "node scripts/check-vendor.mjs && npm run test:vendor",
     "test:error": "node scripts/test-error-visibility.mjs",

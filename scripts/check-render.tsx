@@ -16,7 +16,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { createParser, Renderer } from "@openuidev/react-lang";
 import { appChatLibrary } from "../src/library/chat-library";
-import { verifyRenderedRecipe } from "./diagram-smoke-contract.mjs";
+import { DONE, verifyRenderedRecipe } from "./diagram-smoke-contract.mjs";
 
 const base = process.argv[3] ?? "http://localhost:8787";
 const prompt =
@@ -49,15 +49,19 @@ if (!res.ok) {
 const raw = await res.text();
 let text = "";
 let completed = false;
+const events = [];
 for (const line of raw.split("\n")) {
   if (!line.startsWith("data:")) continue;
   const payload = line.slice(5).trim();
   if (payload === "[DONE]") {
     completed = true;
+    events.push(DONE);
     break;
   }
   try {
-    const delta = JSON.parse(payload).choices?.[0]?.delta?.content;
+    const event = JSON.parse(payload);
+    events.push(event);
+    const delta = event.choices?.[0]?.delta?.content;
     if (typeof delta === "string") text += delta;
   } catch { /* keepalives */ }
 }
@@ -81,7 +85,7 @@ const verdict = verifyRenderedRecipe({
   parseErrors,
   renderedHtml: html,
   expectedFamily,
-  completed,
+  events,
 });
 if (!verdict.ok) {
   console.error(`render gate FAILED for ${expectedFamily}:`);

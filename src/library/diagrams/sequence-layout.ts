@@ -55,6 +55,8 @@ const HEADER_H = 34;
 const FIRST_ROW = 70;
 const ROW_H = 54;
 const LABEL_CHAR = 6.2;
+const SELF_LOOP_LABEL_CHAR = 14;
+const MAX_SELF_LOOP_LABEL_CHARS = 24;
 
 export function layoutSequence(participants: ParticipantInput[], messages: MessageInput[]): SequenceLayout {
   const seen = new Set<string>();
@@ -98,8 +100,15 @@ export function layoutSequence(participants: ParticipantInput[], messages: Messa
     }
 
     if (selfLoop) {
-      // Keep the path's shape and the full label's measured extent together so
-      // the SVG viewBox includes both on the last participant lane.
+      // Keep self-loop text bounded. A conservative per-codepoint width keeps
+      // wide glyphs such as CJK inside the viewBox; fullLabel remains available
+      // to the SVG title and accessible description.
+      const codePoints = Array.from(full);
+      if (codePoints.length > MAX_SELF_LOOP_LABEL_CHARS) {
+        truncated = true;
+        label = codePoints.slice(0, MAX_SELF_LOOP_LABEL_CHARS - 1).join("") + "…";
+      }
+      labelHalfWidth = (Array.from(label).length * SELF_LOOP_LABEL_CHAR) / 2;
       labelX = x1 + 44;
       labelY = y + 12;
       path = `M ${x1} ${y} h 30 a 6 6 0 0 1 6 6 v 10 a 6 6 0 0 1 -6 6 h -22`;

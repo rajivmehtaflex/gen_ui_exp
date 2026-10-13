@@ -2,8 +2,10 @@
 // No test framework. Run: ./node_modules/.bin/tsx scripts/test-tool-wire.mjs
 import assert from "node:assert/strict";
 import { assistantToolCallChunks, toolResultChunk } from "../server/diagram-tool.mjs";
+import { validateChatBody } from "../server/chat-input.mjs";
+import { runToolLoop } from "../server/tool-loop.mjs";
 import { chatAdapter } from "../src/llm.ts";
-import { processStreamedMessage } from "@openuidev/react-headless";
+import { openAIMessageFormat, processStreamedMessage } from "@openuidev/react-headless";
 
 let failures = 0;
 function check(name, fn) {
@@ -81,11 +83,61 @@ await check("chatAdapter emits TOOL_CALL_START, ARGS, END, and RESULT in order",
 
 const doneFrame = "data: [DONE]\n\n";
 const frame = (delta, finish = null) => `data: ${JSON.stringify({ choices: [{ delta, finish_reason: finish }] })}\n\n`;
+const providerChunk = (delta, finish = null) => ({
+  id: "chatcmpl-provider",
+  choices: [{ index: 0, delta, finish_reason: finish }],
+});
 const toolRound = (id, index = 0) => frame({ role: "assistant", tool_calls: [{ index, id, function: { name: "create_diagram", arguments: "{}" } }] }) + frame({}, "tool_calls");
 async function parse(raw) {
   const events = [];
   for await (const event of chatAdapter().parse(raw instanceof Response ? raw : new Response(raw))) events.push(event);
   return events;
+}
+async function runToolRounds(rounds, options = {}) {
+  const frames = [];
+  let roundIndex = 0;
+  const controller = new AbortController();
+  await runToolLoop({
+    messages: [{ role: "user", content: "Create a diagram" }],
+    createCompletion: async () => (async function* () {
+      for (const part of rounds[roundIndex++] ?? []) yield part;
+    })(),
+    executeTool: async () => ({ ok: false, error: "fixture failure", diagnostics: [] }),
+    emit: async (frame) => { frames.push(frame); return true; },
+    signal: controller.signal,
+    model: "offline-model",
+    initialMode: "interactive",
+    ...options,
+  });
+  return frames;
+}
+async function browserHistoryFor(frames) {
+  const originalRequest = globalThis.requestAnimationFrame;
+  const originalCancel = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+  globalThis.cancelAnimationFrame = clearTimeout;
+  try {
+    const messages = [];
+    const executing = new Set();
+    await processStreamedMessage({
+      response: new Response(frames.join("") + doneFrame),
+      adapter: chatAdapter(),
+      createMessage: (message) => messages.push(message),
+      updateMessage: (message) => {
+        const index = messages.findIndex((entry) => entry.id === message.id);
+        if (index === -1) messages.push(message);
+        else messages[index] = message;
+      },
+      markToolExecuting: (id) => executing.add(id),
+      clearToolExecuting: (id) => executing.delete(id),
+    });
+    assert.equal(executing.size, 0);
+    const withNextUser = [...messages, { id: "next-user", role: "user", content: "Now explain it" }];
+    return { sdkMessages: messages, apiMessages: openAIMessageFormat.toApi(withNextUser) };
+  } finally {
+    globalThis.requestAnimationFrame = originalRequest;
+    globalThis.cancelAnimationFrame = originalCancel;
+  }
 }
 function balanced(events) {
   for (const [startType, endType, key] of [
@@ -240,6 +292,88 @@ await check("sdk_segments_and_tool_execution", async () => {
     globalThis.requestAnimationFrame = originalRequest;
     globalThis.cancelAnimationFrame = originalCancel;
   }
+});
+
+await check("failed_malformed_tool_exchange_allows_the_next_user_turn", async () => {
+  let index = 0;
+  const providerRounds = [
+    [
+      providerChunk({ role: "assistant", tool_calls: [{ index: 0, id: "bad-args", type: "function", function: { name: "create_diagram", arguments: "{" } }] }),
+      providerChunk({}, "tool_calls"),
+    ],
+    [providerChunk({ role: "assistant", content: "The diagram arguments were invalid; ask again." }), providerChunk({}, "stop")],
+  ];
+  const frames = [];
+  const signal = new AbortController().signal;
+  await runToolLoop({
+    messages: [{ role: "user", content: "Create a diagram" }],
+    createCompletion: async () => (async function* () { yield* providerRounds[index++]; })(),
+    executeTool: async () => { throw new Error("malformed arguments must not execute"); },
+    emit: async (value) => { frames.push(value); return true; },
+    signal,
+    model: "offline-model",
+    initialMode: "interactive",
+  });
+  const originalRequest = globalThis.requestAnimationFrame;
+  const originalCancel = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+  globalThis.cancelAnimationFrame = clearTimeout;
+  try {
+    const sdkMessages = [];
+    await processStreamedMessage({
+      response: new Response(frames.join("") + doneFrame),
+      adapter: chatAdapter(),
+      createMessage: (message) => sdkMessages.push(message),
+      updateMessage: (message) => {
+        const messageIndex = sdkMessages.findIndex((entry) => entry.id === message.id);
+        if (messageIndex === -1) sdkMessages.push(message);
+        else sdkMessages[messageIndex] = message;
+      },
+      markToolExecuting: () => {},
+      clearToolExecuting: () => {},
+    });
+    const apiMessages = openAIMessageFormat.toApi([
+      ...sdkMessages,
+      { id: "next-turn", role: "user", content: "Now explain it" },
+    ]);
+    const validation = validateChatBody({ messages: apiMessages });
+    assert.equal(validation.ok, true, `a handled tool failure must not poison the next request: ${JSON.stringify(validation)}`);
+  } finally {
+    globalThis.requestAnimationFrame = originalRequest;
+    globalThis.cancelAnimationFrame = originalCancel;
+  }
+});
+
+await check("output_budget_stop_does_not_leave_a_pending_tool_call", async () => {
+  const frames = await runToolRounds([
+    [
+      providerChunk({ role: "assistant", tool_calls: [{ index: 0, id: "budget-call", type: "function", function: { name: "create_diagram", arguments: "{" } }] }),
+      providerChunk({ tool_calls: [{ index: 0, function: { arguments: "\"title\":" } }] }),
+    ],
+  ], { maxModelOutputBytes: 1 });
+  const history = await browserHistoryFor(frames);
+  const validation = validateChatBody({ messages: history.apiMessages });
+  assert.equal(validation.ok, true, `a visible output-budget stop must leave submit-ready history: ${JSON.stringify(validation)}`);
+  assert.ok(history.apiMessages.some((message) => message.role === "assistant" && /output budget/i.test(message.content ?? "")));
+});
+
+await check("duplicate_provider_tool_ids_are_normalized_before_sdk_history", async () => {
+  const frames = await runToolRounds([
+    [providerChunk({ role: "assistant", tool_calls: [
+      { index: 0, id: "duplicate-id", type: "function", function: { name: "create_diagram", arguments: "{}" } },
+      { index: 1, id: "duplicate-id", type: "function", function: { name: "create_diagram", arguments: "{}" } },
+    ] }), providerChunk({}, "tool_calls")],
+    [providerChunk({ role: "assistant", content: "Both calls failed; ask again." }), providerChunk({}, "stop")],
+  ]);
+  const history = await browserHistoryFor(frames);
+  const assistantCalls = history.apiMessages.flatMap((message) => message.role === "assistant" ? message.tool_calls ?? [] : []);
+  const toolResults = history.apiMessages.filter((message) => message.role === "tool");
+  assert.equal(assistantCalls.length, 2, "both calls must survive SDK history serialization");
+  assert.equal(new Set(assistantCalls.map((call) => call.id)).size, 2, "each emitted call id must be unique");
+  assert.equal(toolResults.length, 2, "each call must retain its own result");
+  assert.deepEqual(new Set(toolResults.map((result) => result.tool_call_id)), new Set(assistantCalls.map((call) => call.id)));
+  const validation = validateChatBody({ messages: [...history.apiMessages, { role: "user", content: "Continue" }] });
+  assert.equal(validation.ok, true, `normalized duplicate ids must remain usable: ${JSON.stringify(validation)}`);
 });
 
 process.exit(failures ? 1 : 0);

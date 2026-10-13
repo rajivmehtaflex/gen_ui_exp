@@ -1,6 +1,6 @@
 import {
   accumulateToolCalls,
-  assistantToolCallChunks,
+  assistantToolCallBatchChunks,
   diagramToolDeclaration,
   toolResultChunk,
 } from "./diagram-tool.mjs";
@@ -68,6 +68,42 @@ function errorResult(error) {
   return { ok: false, error, diagnostics: [] };
 }
 
+function withoutToolCallDeltas(part) {
+  if (!Array.isArray(part?.choices)) return part;
+  let changed = false;
+  const choices = part.choices.map((choice) => {
+    if (!choice?.delta || !Object.hasOwn(choice.delta, "tool_calls")) return choice;
+    const { tool_calls: _toolCalls, ...delta } = choice.delta;
+    changed = true;
+    return { ...choice, delta };
+  });
+  return changed ? { ...part, choices } : part;
+}
+
+function safeToolArguments(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return { arguments: "{}", invalid: true };
+  }
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return { arguments: value, invalid: false };
+    }
+  } catch {
+    // Keep malformed provider text out of conversation history; the tool result
+    // below carries the validation failure back to the model and browser.
+  }
+  return { arguments: "{}", invalid: true };
+}
+
+function uniqueToolCallId(candidate, batchNumber, index, seenIds, fallbackPrefix) {
+  if (typeof candidate === "string" && candidate.trim() && !seenIds.has(candidate)) return candidate;
+  let suffix = 0;
+  let id = `${fallbackPrefix}_${batchNumber}_${index}`;
+  while (seenIds.has(id)) id = `${fallbackPrefix}_${batchNumber}_${index}_${++suffix}`;
+  return id;
+}
+
 // The round machine. Returns true when the request reached one of its natural
 // endings (a settled final response or a visible failure) and false only when
 // the signal aborted mid-flight — runToolLoop turns the latter into a visible
@@ -75,6 +111,8 @@ function errorResult(error) {
 async function runToolLoopRounds({ messages, createCompletion, executeTool, emit, signal, model, initialMode,
   maxModelOutputBytes = MAX_MODEL_OUTPUT_BYTES }) {
   const conversation = [...messages];
+  const seenToolIds = new Set(conversation.flatMap((message) =>
+    Array.isArray(message.tool_calls) ? message.tool_calls.map((call) => call.id).filter((id) => typeof id === "string") : []));
   const budget = createStreamBudget(maxModelOutputBytes);
   // The writer refused a frame, so it was never delivered; continuing would
   // stream a gap the client reads as normal output. Settle visibly instead —
@@ -134,7 +172,7 @@ async function runToolLoopRounds({ messages, createCompletion, executeTool, emit
         }
         // The adapter ignores subsequent text after stop or failure. Release a
         // final stop only after the provider stream itself ends successfully.
-        const frame = `data: ${JSON.stringify(part)}\n\n`;
+        const frame = `data: ${JSON.stringify(withoutToolCallDeltas(part))}\n\n`;
         if (finalRequest && choice?.finish_reason === "stop") {
           heldFinalStop = frame;
         } else if (!(finalRequest && invalidFinalFinish)) {
@@ -176,21 +214,35 @@ async function runToolLoopRounds({ messages, createCompletion, executeTool, emit
       return true;
     }
 
-    const normalized = calls.map((call, index) => ({
+    const normalized = calls.map((call, index) => {
+      const originalIdValid = typeof call.id === "string" && call.id.trim().length > 0;
+      const duplicateId = originalIdValid && seenToolIds.has(call.id);
+      const fallbackPrefix = originalIdValid ? "duplicate_call" : "invalid_call";
+      const id = uniqueToolCallId(call.id, batchNumber, index, seenToolIds, fallbackPrefix);
+      seenToolIds.add(id);
+      const safeArgs = safeToolArguments(call.arguments);
+      return {
+        index: call.index,
+        id,
+        name: typeof call.name === "string" ? call.name : "",
+        wireName: typeof call.name === "string" && call.name.trim() ? call.name : "unknown_function",
+        arguments: safeArgs.arguments,
+        missingId: !originalIdValid,
+        duplicateId,
+        invalidArguments: safeArgs.invalid,
+      };
+    });
+    // Provider tool deltas are buffered until a complete round exists. Emit a
+    // single normalized batch so malformed arguments and duplicate ids cannot
+    // poison the browser's serialized conversation history.
+    const browserCalls = normalized.map((call) => ({
       index: call.index,
-      id: typeof call.id === "string" && call.id.trim() ? call.id : `invalid_call_${batchNumber}_${index}`,
-      name: call.name,
+      id: call.id,
+      name: call.wireName,
       arguments: call.arguments,
-      missingId: !(typeof call.id === "string" && call.id.trim()),
     }));
-    // The browser adapter only starts a tool call after seeing an id. Mirror a
-    // malformed call with a stable synthetic id so its error result is visible.
-    for (const call of normalized) {
-      if (call.missingId) {
-        for (const frame of assistantToolCallChunks(call, model)) {
-          if ((await emit(frame)) === false) return await settleAfterRefusal();
-        }
-      }
+    for (const frame of assistantToolCallBatchChunks(browserCalls, model)) {
+      if ((await emit(frame)) === false) return await settleAfterRefusal();
     }
     conversation.push({
       role: "assistant",
@@ -198,7 +250,7 @@ async function runToolLoopRounds({ messages, createCompletion, executeTool, emit
       tool_calls: normalized.map((call) => ({
         id: call.id,
         type: "function",
-        function: { name: call.name || "", arguments: call.arguments || "" },
+        function: { name: call.wireName, arguments: call.arguments },
       })),
     });
 
@@ -210,6 +262,10 @@ async function runToolLoopRounds({ messages, createCompletion, executeTool, emit
       let result;
       if (call.missingId) {
         result = errorResult("invalid tool call: missing id");
+      } else if (call.duplicateId) {
+        result = errorResult("duplicate provider tool call id; duplicate call was not executed");
+      } else if (call.invalidArguments) {
+        result = errorResult("invalid JSON arguments: expected a JSON object");
       } else if (call.name !== "create_diagram") {
         result = errorResult(`unsupported function: ${call.name || "(missing name)"}`);
       } else if (typeof call.arguments !== "string" || !call.arguments.trim()) {

@@ -136,9 +136,8 @@ assert.throws(() => layoutSequence([participants[0], participants[0]], messages)
 const tiny = layoutSequence([participants[0]], []);
 assert.ok(Number.isFinite(tiny.width) && Number.isFinite(tiny.height));
 
-// A last-lane self-loop keeps the entire path and the full 120-character label
-// inside the SVG viewBox. The renderer can show a short visual label plus a
-// full-label alternative, but layout must account for the latter's extent.
+// A last-lane self-loop keeps its visible label bounded inside the SVG viewBox
+// while retaining the complete label for the accessible alternative.
 const longLoopLabel = "self loop " + "x".repeat(110);
 const lastLaneLoop = layoutSequence(
   [{ id: "solo", label: "Solo" }],
@@ -148,6 +147,8 @@ const longLoop = lastLaneLoop.arrows[0];
 assert.equal(longLoop.from, "solo");
 assert.equal(longLoop.to, "solo");
 assert.equal(longLoop.fullLabel, longLoopLabel);
+assert.equal(longLoop.truncated, true);
+assert.ok(longLoop.label.endsWith("…"), "long self-loop labels must be shortened visually");
 assert.ok(longLoop.bounds.left >= 0 && longLoop.bounds.right <= lastLaneLoop.width, "self-loop path and label must fit horizontally");
 assert.ok(longLoop.bounds.top >= 0 && longLoop.bounds.bottom <= lastLaneLoop.height, "self-loop path and label must fit vertically");
 

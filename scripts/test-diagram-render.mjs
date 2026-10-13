@@ -134,7 +134,7 @@ assert.match(sequenceHtml, /style="[^"]*overflow-x:auto[^"]*"/, "wide sequence d
 const viewBoxWidth = Number(sequenceHtml.match(/viewBox="0 0 ([\d.]+) [\d.]+"/)?.[1]);
 const loopLabelX = Number(sequenceHtml.match(/<text x="([\d.]+)" y="[\d.]+" text-anchor="start"[^>]*>self loop/)?.[1]);
 assert.ok(Number.isFinite(viewBoxWidth) && Number.isFinite(loopLabelX), "sequence viewBox and loop text geometry must be present");
-assert.ok(loopLabelX + loopLabel.length * 6.2 <= viewBoxWidth, "last-lane loop text must fit its viewBox");
+assert.ok(loopLabelX < viewBoxWidth, "self-loop label must start inside the sequence viewBox");
 const noisySequenceHtml = renderToString(
   SequenceDiagram.component({
     props: {
@@ -213,6 +213,34 @@ try {
   assert.ok(scrollBefore.scrollWidth > scrollBefore.clientWidth, "long sequence content must overflow the mobile viewport horizontally");
   await sequencePage.locator(".gx-diagram").evaluate((element) => { element.scrollLeft = element.scrollWidth; });
   assert.ok(await sequencePage.locator(".gx-diagram").evaluate((element) => element.scrollLeft > 0), "mobile users can scroll across the full sequence");
+
+  for (const wideLabel of ["W".repeat(120), "缓存".repeat(60)]) {
+    const wideHtml = renderToString(
+      SequenceDiagram.component({
+        props: {
+          participants: [{ props: { id: "wide", label: "Wide" } }],
+          messages: [{ props: { from: "wide", to: "wide", label: wideLabel } }],
+        },
+      }),
+    );
+    await sequencePage.setContent(`<main>${wideHtml}</main>`);
+    const bounds = await sequencePage.locator("svg").evaluate((svg, fullLabel) => {
+      const group = Array.from(svg.querySelectorAll("g")).find((entry) =>
+        entry.querySelector("title")?.textContent === `wide to wide: ${fullLabel}`);
+      const text = group?.querySelector("text");
+      const box = text?.getBBox();
+      return {
+        text: text?.textContent ?? "",
+        right: box ? box.x + box.width : Number.POSITIVE_INFINITY,
+        viewBoxWidth: svg.viewBox.baseVal.width,
+        description: svg.querySelector("desc")?.textContent ?? "",
+      };
+    }, wideLabel);
+    assert.ok(bounds.right <= bounds.viewBoxWidth + 0.5,
+      `rendered ${wideLabel.slice(0, 8)} label must stay inside its actual SVG viewBox (${bounds.right} > ${bounds.viewBoxWidth})`);
+    assert.ok(bounds.text.endsWith("…"), "a long visual label may be shortened with an ellipsis");
+    assert.ok(bounds.description.includes(wideLabel), "the full label must remain in the accessible description");
+  }
 } finally {
   await browser.close();
 }
